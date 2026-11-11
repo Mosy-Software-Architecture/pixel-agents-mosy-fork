@@ -17,6 +17,7 @@ import {
   recordConversationLooks,
   resumeRequest,
   searchConversations,
+  sessionsLiveElsewhere,
 } from '../src/conversations.js';
 import { claudeProvider } from '../src/providers/hook/claude/claude.js';
 import { CONVERSATION_TITLE_SCAN_BYTES } from '../src/providers/hook/claude/constants.js';
@@ -182,6 +183,41 @@ describe('conversations', () => {
       expect(sessionInfoFromRecord({ type: 'custom-title', customTitle: '  ' })).toBeNull();
       expect(sessionInfoFromRecord({ type: 'user' })).toBeNull();
       expect(sessionInfoFromRecord('nope')).toBeNull();
+    });
+  });
+
+  describe('sessions live elsewhere', () => {
+    const withRunning = (sessions: Array<{ sessionId: string; pid: number; status?: string }>) =>
+      ({ ...provider, liveSessions: () => sessions }) as HookProvider;
+
+    it("marks a session another terminal runs, not one of the office's own", () => {
+      transcript(uuid(1), line({ type: 'ai-title', aiTitle: 'Kitty' }), 2);
+      transcript(uuid(2), line({ type: 'ai-title', aiTitle: 'Ours' }), 1);
+      const running = withRunning([
+        { sessionId: uuid(1), pid: 100, status: 'idle' },
+        { sessionId: uuid(2), pid: 200, status: 'busy' },
+      ]);
+      const elsewhere = sessionsLiveElsewhere(running, new Set([200]));
+      expect([...elsewhere]).toEqual([[uuid(1), { status: 'idle' }]]);
+
+      const [listed] = listConversations([directory], running, new Map(), undefined, elsewhere);
+      expect(listed.conversations.map((c) => [c.title, c.liveElsewhere])).toEqual([
+        ['Kitty', { status: 'idle' }],
+        ['Ours', undefined],
+      ]);
+      const { results } = searchConversations(
+        [directory],
+        running,
+        new Map(),
+        { query: 'kitty', limit: 5 },
+        elsewhere,
+      );
+      expect(results[0].conversation.liveElsewhere).toEqual({ status: 'idle' });
+    });
+
+    it('marks nothing for a provider that keeps no registry', () => {
+      const none = { ...provider, liveSessions: undefined } as HookProvider;
+      expect(sessionsLiveElsewhere(none, new Set()).size).toBe(0);
     });
   });
 
