@@ -1,4 +1,5 @@
 import type { AgentStateStore } from './agentStateStore.js';
+import { sessionInfoMessage } from './sessionInfo.js';
 import { hasPromotedBackgroundAgent } from './teamUtils.js';
 
 /**
@@ -10,6 +11,7 @@ import { hasPromotedBackgroundAgent } from './teamUtils.js';
  * 3. Background tools with runInBackground + isTeammateSpawn flags, skipping promoted spawns
  * 4. Waiting or active status
  * 5. Context usage
+ * 6. Session name and colour
  */
 export function resendAgentActivity(
   send: (message: Record<string, unknown>) => void,
@@ -89,6 +91,12 @@ export function resendAgentActivity(
         contextTokens: agent.contextTokens,
         maxContextTokens: agent.maxContextTokens,
       });
+    }
+
+    // 6. Session name and colour (and agent setting)
+    const info = agent.sessionInfo;
+    if (info && (info.title || info.color || info.agentSetting)) {
+      send(sessionInfoMessage(id, info));
     }
   }
 }

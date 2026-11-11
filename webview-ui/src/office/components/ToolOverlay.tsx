@@ -23,6 +23,7 @@ import { ContextBar } from '../ContextBar.js';
 import { contextLeft } from '../contextGauge.js';
 import type { OfficeState } from '../engine/officeState.js';
 import { overlayProjection } from '../projection.js';
+import { agentSessionInfo, sessionColor } from '../sessionLabel.js';
 import { getCachedSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js';
 import type { ToolActivity } from '../types.js';
@@ -281,6 +282,12 @@ export function ToolOverlay({
         // Team info
         const teamRoleLabel = ch.isTeamLead ? 'LEAD' : ch.agentName || null;
 
+        // The session's name, tinted with the colour the user marked it with.
+        // Sub-agents have no session of their own, so never a name.
+        const session = isSub ? undefined : agentSessionInfo(id);
+        const sessionTitle = session?.title;
+        const sessionTitleColor = sessionColor(session?.color);
+
         // Context gauge. Every agent gets one — lead, teammate, adopted,
         // headless — as soon as the server reports its context (a cleared
         // session's 0 included: a full gauge). Sub-agents never do: they have
@@ -315,6 +322,16 @@ export function ToolOverlay({
                   />
                 )}
                 <div className="flex flex-col gap-0 overflow-hidden">
+                  {sessionTitle && (
+                    <span
+                      className="overflow-hidden text-ellipsis block leading-none"
+                      style={{ fontSize: '20px', color: sessionTitleColor }}
+                      data-testid="agent-session-title"
+                      data-session-color={session?.color}
+                    >
+                      {sessionTitle}
+                    </span>
+                  )}
                   {teamRoleLabel && (
                     <span
                       className="overflow-hidden text-ellipsis block leading-none"

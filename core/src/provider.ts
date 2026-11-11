@@ -119,6 +119,31 @@ export interface UsageBridge {
   normalizeContext(raw: unknown): ReportedContext | null;
 }
 
+/**
+ * What a CLI records about a session besides its activity: the name and
+ * colour the user gave it and the agent definition it runs as. Read from the
+ * session's transcript by the provider (HookProvider.sessionInfo).
+ */
+export interface SessionInfo {
+  /** The session's name: the user's own (a rename), else the one the CLI
+   *  generated. */
+  title?: string;
+  /** True when `title` is the user's own: a generated one never replaces it. */
+  titleIsUsers?: boolean;
+  /** The colour the user marked the session with, as the CLI names it
+   *  (lower case, e.g. "red"). The office tints the names it knows. */
+  color?: string;
+  /** The agent definition the session runs as (Claude: `--agent`). */
+  agentSetting?: string;
+}
+
+/** One transcript record's news about its session (HookProvider.sessionInfoFromRecord).
+ *  `undefined` in a colour or agent setting: the user cleared it. */
+export type SessionInfoRecord =
+  | { kind: 'title'; title: string; byUser: boolean }
+  | { kind: 'color'; color: string | undefined }
+  | { kind: 'agentSetting'; agentSetting: string | undefined };
+
 // ── Hook-based Provider (CLIs with hooks APIs) ────────────────
 
 export interface HookProvider {
@@ -214,6 +239,14 @@ export interface HookProvider {
    *  recent conversations; undefined = this provider names no conversations
    *  (and is never asked to resume one). */
   conversationTitle?(transcriptPath: string): string | undefined;
+  /** What a transcript says about its session (its newest name, colour and
+   *  agent setting), for the label over its agent's character. Read when an
+   *  agent's transcript starts being watched; `sessionInfoFromRecord` keeps it
+   *  current from there. Undefined = this provider reads none. */
+  sessionInfo?(transcriptPath: string): SessionInfo;
+  /** One transcript record's news about its session, or null when it carries
+   *  none (most records). */
+  sessionInfoFromRecord?(record: unknown): SessionInfoRecord | null;
 
   /** Optional account-usage reporting (the office's usage bars). */
   readonly usageBridge?: UsageBridge;

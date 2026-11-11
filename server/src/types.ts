@@ -1,5 +1,6 @@
 import type * as vscode from 'vscode';
 
+import type { SessionInfo } from '../../core/src/provider.js';
 import type { BackgroundSpawns } from './backgroundSpawns.js';
 
 export interface AgentState {
@@ -71,6 +72,11 @@ export interface AgentState {
   /** True once the office was told this agent's context (agentContextUsage),
    *  so a 0 after /clear is a real reading, re-sent on every connect. */
   contextReported?: boolean;
+
+  // -- Session name and colour (server/src/sessionInfo.ts) --
+  /** What the CLI records about the session: the name and colour the user
+   *  gave it, its agent setting. Read from the transcript, never persisted. */
+  sessionInfo?: SessionInfo;
 
   // -- Agent Teams --
   teamName?: string;
