@@ -1169,6 +1169,23 @@ components:
         agentId:
           type: integer
           description: The agent in the office running it right now; absent for a past conversation.
+        liveElsewhere:
+          $ref: '#/components/schemas/LiveElsewhere'
+
+    LiveElsewhere:
+      description: >-
+        The conversation's session is running right now in a terminal the
+        office did not launch (as the CLI's own registry of running processes
+        says): resuming it would start a second process on the same session.
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: The session's name in that terminal.
+        status:
+          type: string
+          description: What that process is doing, in the CLI's words (Claude Code - busy, idle, waiting, shell).
 
     AgentDiagnostics:
       description: Connection diagnostics for all agents (response to requestDiagnostics).

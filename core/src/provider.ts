@@ -144,6 +144,19 @@ export type SessionInfoRecord =
   | { kind: 'color'; color: string | undefined }
   | { kind: 'agentSetting'; agentSetting: string | undefined };
 
+/** A session of the CLI running right now on this host, in any terminal, as
+ *  the CLI itself registers it (HookProvider.liveSessions). */
+export interface LiveCliSession {
+  sessionId: string;
+  /** The process running it. */
+  pid: number;
+  /** The session's name, as the CLI shows it. */
+  name?: string;
+  /** What the process is doing, in the CLI's words (Claude: busy, idle,
+   *  waiting, shell). */
+  status?: string;
+}
+
 // ── Hook-based Provider (CLIs with hooks APIs) ────────────────
 
 export interface HookProvider {
@@ -247,6 +260,10 @@ export interface HookProvider {
   /** One transcript record's news about its session, or null when it carries
    *  none (most records). */
   sessionInfoFromRecord?(record: unknown): SessionInfoRecord | null;
+  /** The sessions of this CLI running right now on this host, in any terminal
+   *  (the office's own included), so the sidebar can warn before resuming one
+   *  that is still open elsewhere. Undefined = this CLI keeps no such record. */
+  liveSessions?(): LiveCliSession[];
 
   /** Optional account-usage reporting (the office's usage bars). */
   readonly usageBridge?: UsageBridge;

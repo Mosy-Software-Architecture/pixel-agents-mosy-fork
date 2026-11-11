@@ -28,6 +28,7 @@ import {
   recordConversationLooks,
   resumeRequest,
   searchConversations,
+  sessionsLiveElsewhere,
 } from './conversations.js';
 import {
   handleDirectoryClientMessage,
@@ -114,6 +115,21 @@ const KEY_SHOW_HOST_DIRECTORIES = 'pixel-agents.showHostDirectories';
 const conversationProvider = hookProviders.find(
   (provider) => provider.conversationTitle && provider.buildLaunchCommand,
 );
+
+/** The sessions open in a terminal the office did not launch: the CLI's
+ *  running processes, less this office's own terminals. */
+function liveElsewhere(
+  store: AgentStateStore,
+  ptyManager: TerminalSessions,
+  provider: HookProvider,
+): ReturnType<typeof sessionsLiveElsewhere> {
+  const ownPids = new Set<number>();
+  for (const [id] of store) {
+    const pid = ptyManager.get(id)?.pid;
+    if (pid !== null && pid !== undefined) ownPids.add(pid);
+  }
+  return sessionsLiveElsewhere(provider, ownPids);
+}
 
 /**
  * This host's own Directory contribution: the directory the server was started
@@ -209,6 +225,7 @@ export function handleClientMessage(
           conversationProvider,
           liveSessions(store),
           conversationLimitsFrom(msg.limits),
+          liveElsewhere(store, ctx.ptyManager, conversationProvider),
         ),
       });
       break;
@@ -226,6 +243,7 @@ export function handleClientMessage(
           conversationProvider,
           liveSessions(store),
           query,
+          liveElsewhere(store, ctx.ptyManager, conversationProvider),
         ),
       });
       break;

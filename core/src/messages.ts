@@ -495,6 +495,12 @@ export interface Conversation {
   palette?: number;
   repeat?: number;
   agentId?: number;
+  liveElsewhere?: LiveElsewhere;
+}
+
+export interface LiveElsewhere {
+  name?: string;
+  status?: string;
 }
 
 export interface ConversationSearchResults {

@@ -5,6 +5,7 @@ import type { Conversation, DirectoryConversations } from '../../../core/src/mes
 import type { TabStatus } from '../components/AgentCard.js';
 import { CharacterMugShot } from '../components/CharacterMugShot.js';
 import { STATUS_DOT } from '../components/statusDot.js';
+import { Button } from '../components/ui/Button.js';
 import { PixelIcon } from '../components/ui/PixelIcon.js';
 import { PixelText } from '../components/ui/PixelText.js';
 import {
@@ -16,6 +17,7 @@ import {
   RECENT_CONVERSATIONS_COUNT,
 } from '../constants.js';
 import { prefersReducedMotion } from '../hooks/usePresence.js';
+import { liveElsewhereBadge, liveElsewhereWarning, resumeNeedsConfirm } from './liveElsewhere.js';
 import { recentAcross } from './recent.js';
 import { timeAgo } from './timeAgo.js';
 import { type ConversationLimits, useConversations } from './useConversations.js';
@@ -376,14 +378,22 @@ export interface RowProps {
   roomy: boolean;
 }
 
+/**
+ * One conversation. One still open in a terminal the office did not launch
+ * says so under its title; pressing it, when that would resume it, first asks
+ * in place (a second process on a running session is rarely meant).
+ */
 export function ConversationRow({ conversation, where, onPress, statusFor, now, roomy }: RowProps) {
-  const { title, updatedAt, palette, repeat, agentId } = conversation;
+  const { title, updatedAt, palette, repeat, agentId, liveElsewhere } = conversation;
   const status = agentId !== undefined ? statusFor(agentId) : null;
-  return (
+  const [confirming, setConfirming] = useState(false);
+  const needsConfirm = resumeNeedsConfirm(conversation);
+  const row = (
     <button
       type="button"
       data-testid="conversation-row"
-      onClick={onPress}
+      onClick={needsConfirm ? () => setConfirming((open) => !open) : onPress}
+      aria-expanded={needsConfirm ? confirming : undefined}
       title={agentId !== undefined ? `Go to "${title}"` : `Resume "${title}"`}
       className={`w-full flex items-center gap-8 px-10 ${roomy ? 'py-8' : where ? 'py-3' : 'py-5'} bg-transparent border-none rounded-none cursor-pointer text-left text-text hover:bg-btn-bg`}
     >
@@ -408,6 +418,19 @@ export function ConversationRow({ conversation, where, onPress, statusFor, now, 
             {where}
           </span>
         )}
+        {liveElsewhere && (
+          <span
+            data-testid="conversation-live-elsewhere"
+            title={
+              liveElsewhere.name
+                ? `Open in another terminal as "${liveElsewhere.name}"`
+                : 'Open in another terminal'
+            }
+            className="text-2xs text-warning overflow-hidden text-ellipsis whitespace-nowrap"
+          >
+            {liveElsewhereBadge(liveElsewhere)}
+          </span>
+        )}
       </span>
       <RowTrail
         running={agentId !== undefined}
@@ -417,6 +440,44 @@ export function ConversationRow({ conversation, where, onPress, statusFor, now, 
         testId="conversation-status"
       />
     </button>
+  );
+  if (!needsConfirm || !liveElsewhere) return row;
+  return (
+    <div>
+      {row}
+      {confirming && (
+        <div
+          role="alertdialog"
+          aria-label="Resume a session open elsewhere"
+          data-testid="conversation-resume-confirm"
+          className="mx-10 mb-4 px-8 py-6 bg-bg-dark border-2 border-warning rounded-none"
+        >
+          <p className="m-0 text-xs leading-tight text-text">
+            {liveElsewhereWarning(liveElsewhere)}
+          </p>
+          <div className="flex justify-end gap-6 mt-6">
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="conversation-resume-cancel"
+              onClick={() => setConfirming(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              data-testid="conversation-resume-anyway"
+              onClick={() => {
+                setConfirming(false);
+                onPress();
+              }}
+            >
+              Open anyway
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
