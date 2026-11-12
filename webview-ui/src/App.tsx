@@ -222,9 +222,11 @@ function App() {
     besidePx: hasSidebar && sidebar.open ? CONVERSATION_SIDEBAR_WIDTH_PX : 0,
   });
 
-  const { launch: launchIntoDirectory, resume: resumeAndFocus } = useLaunchActions(
-    terminalDrawer.expectLaunch,
-  );
+  const {
+    launch: launchIntoDirectory,
+    resume: resumeAndFocus,
+    openRemote: openRemoteAndFocus,
+  } = useLaunchActions(terminalDrawer.expectLaunch);
   const mobileShell = useMobileShell({
     getOfficeState,
     terminalAgentIds,
@@ -860,6 +862,7 @@ function App() {
               open={sidebar.open}
               onResume={resumeAndFocus}
               onOpenAgent={openAgentFromSidebar}
+              onOpenRemote={openRemoteAndFocus}
               statusFor={terminalDrawer.statusFor}
               isSettingsOpen={isSettingsOpen}
               onToggleSettings={() => setIsSettingsOpen((v) => !v)}
@@ -974,6 +977,7 @@ function App() {
           showConversations={terminalAvailable}
           onResume={resumeAndFocus}
           onOpenAgent={mobileShell.openAgent}
+          onOpenRemote={openRemoteAndFocus}
           statusFor={terminalDrawer.statusFor}
           onSearch={setConversationSearch}
         />

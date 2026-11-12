@@ -176,6 +176,7 @@ components:
         - $ref: '#/components/schemas/RequestConversations'
         - $ref: '#/components/schemas/SearchConversations'
         - $ref: '#/components/schemas/ResumeConversation'
+        - $ref: '#/components/schemas/OpenRemoteConversation'
         - $ref: '#/components/schemas/RequestDiagnostics'
       discriminator: type
 
@@ -509,6 +510,12 @@ components:
         agentSetting:
           type: string
           description: The agent definition the session runs as (Claude Code's --agent), e.g. "plugin:agent".
+        host:
+          type: string
+          description: >-
+            The remote host the session runs on (config.json `remoteHosts`
+            name), for an agent opened from a remote host's list. Absent for a
+            local session.
 
     LayoutLoaded:
       description: |
@@ -1091,7 +1098,8 @@ components:
         agent in the office is running (with `agentId`) and its past ones,
         newest first: five in all, or as many as the request's `limits` asked
         for that Directory. Sent point-to-point in reply to
-        `requestConversations` (never broadcast).
+        `requestConversations` (never broadcast), and again to the same
+        client once the remote hosts it asked answer.
       type: object
       additionalProperties: false
       required: [type, directories]
@@ -1102,6 +1110,31 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DirectoryConversations'
+        remoteHosts:
+          type: array
+          description: >-
+            The sessions of each remote host the host is configured with
+            (config.json `remoteHosts`) that has answered, newest first.
+          items:
+            $ref: '#/components/schemas/RemoteHostConversations'
+
+    RemoteHostConversations:
+      description: >-
+        A remote host's Claude Code sessions, read over ssh: the running ones
+        and those written lately. `online` false: ssh failed, and the list is
+        empty.
+      type: object
+      additionalProperties: false
+      required: [name, online, conversations]
+      properties:
+        name:
+          type: string
+        online:
+          type: boolean
+        conversations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Conversation'
 
     DirectoryConversations:
       type: object
@@ -1189,6 +1222,12 @@ components:
           description: The agent in the office running it right now; absent for a past conversation.
         liveElsewhere:
           $ref: '#/components/schemas/LiveElsewhere'
+        remoteStatus:
+          type: string
+          description: >-
+            A remote host's session running right now on that host: what it is
+            doing there, in the CLI's words (busy, idle, waiting). Absent when
+            it runs nowhere, and for a local conversation.
 
     LiveElsewhere:
       description: >-
@@ -1806,6 +1845,25 @@ components:
         directoryPath:
           type: string
           description: Path of the Directory the conversation was listed under.
+
+    OpenRemoteConversation:
+      description: >-
+        Open a remote host's session in a new terminal (ssh into the host's
+        tmux, attaching to the session's tmux session or starting one that
+        resumes it) with a character for it while the terminal is open.
+        Ignored unless the host's last list holds the session, or when it is
+        already open in the office.
+      type: object
+      additionalProperties: false
+      required: [type, host, sessionId]
+      properties:
+        type:
+          const: openRemoteConversation
+        host:
+          type: string
+          description: The remote host's name, as conversationsLoaded.remoteHosts names it.
+        sessionId:
+          type: string
 
     SetShowAreas:
       description: Toggle the Areas overlay (translucent rendering on top of the office).

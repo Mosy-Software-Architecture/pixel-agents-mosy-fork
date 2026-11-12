@@ -220,7 +220,7 @@ export function sessionsLiveElsewhere(
 }
 
 /** A resumable session id: a UUID, never anything a CLI could read as a flag. */
-const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** What resuming a conversation needs, checked. */
 export interface ResumeRequest {

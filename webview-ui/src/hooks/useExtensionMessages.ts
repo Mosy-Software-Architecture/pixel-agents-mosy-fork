@@ -916,6 +916,7 @@ export function useExtensionMessages(
           title: msg.title as string | undefined,
           color: msg.color as string | undefined,
           agentSetting: msg.agentSetting as string | undefined,
+          host: msg.host as string | undefined,
         });
       }
     };

@@ -50,6 +50,20 @@ export function sessionInfo(transcriptPath: string): SessionInfo {
   };
 }
 
+/**
+ * The title and colour a chunk of a transcript's records gives, as
+ * conversationTitle and sessionInfo would read them: for a transcript on
+ * another machine, whose title records arrive over ssh (remoteListing.ts).
+ */
+export function labelFromChunk(chunk: string): { title?: string; color?: string } {
+  const found = foundIn(chunk);
+  const title = found.custom ?? found.ai ?? found.prompt;
+  return {
+    ...(title ? { title: clip(title) } : {}),
+    ...(found.color ? { color: found.color } : {}),
+  };
+}
+
 /** A transcript record's news about its session, or null for any other record. */
 export function sessionInfoFromRecord(record: unknown): SessionInfoRecord | null {
   if (!isRecord(record)) return null;

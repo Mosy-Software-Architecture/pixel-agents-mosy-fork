@@ -322,6 +322,17 @@ export const ICONS = {
     '........',
     '........',
   ],
+  // A small house: a session on another machine (the sidebar's remote hosts).
+  remote: [
+    '...##...',
+    '..####..',
+    '.######.',
+    '########',
+    '.######.',
+    '.##..##.',
+    '.##..##.',
+    '.##..##.',
+  ],
   // A magnifying glass: the lens top-left, the handle out to the corner.
   search: [
     '.####...',

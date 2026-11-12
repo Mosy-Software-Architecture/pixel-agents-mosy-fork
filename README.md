@@ -40,6 +40,7 @@ Claude Code is supported today; Codex, Gemini, Cursor, and others are on the roa
 - **Your own team** — design your agents: a wardrobe of bodies, hair, clothes and accessories, colour pickers, a pixel editor, and custom items. The pixel art is based on the amazing work of [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack).
 - **In the browser and on your phone** — the standalone office launches agents into an embedded terminal. On a phone, via Tailscale, it can become an app with the office and the terminal a swipe apart
 - **Recent conversations** — past sessions listed per Directory, resumed with one click as the character they had
+- **Remote hosts** — the Claude Code sessions of another machine you reach over ssh, opened in the embedded terminal with a character for them
 - **Usage and context bars** — health bars for your plan limits, and one on every agent for the context it has left
 - **Office radio** — procedural 8-bit background music with moods and shareable song codes
 
@@ -128,6 +129,18 @@ Use **Settings → Add Asset Directory** to load external characters, pets, and 
 A Directory is a folder you launch agents into. Click **+** to open the drawer, then **+ Directory** to add one: a name, a path (suggested from your past Claude Code sessions), and optionally the Areas its agents should sit in and the characters they wear by default. The pencil on a row you added edits or deletes it; on a phone, long-press the row.
 
 Your workspace folders (VS Code) or the directory the CLI started in (standalone) are listed too once you turn on **Settings → Show Workspace Folders** or **Show Start Directory**. That setting is about the launch drawer: the recent conversations always include the sessions of the start directory. When every session lives in one Directory, turn off **Settings → Show Directory Names** to drop its name from the conversation rows and from the label over each character.
+
+### Remote hosts
+
+The standalone office can also list the Claude Code sessions of another machine. Add it to `~/.pixel-agents/config.json` by hand:
+
+```json
+"remoteHosts": [{ "name": "casita", "ssh": "minipc" }]
+```
+
+`ssh` is what you would type after `ssh`, best an alias from `~/.ssh/config`, and it must log in without a password (the office runs it with `BatchMode=yes`). The remote host needs `python3` and, to keep sessions alive, `tmux`.
+
+The sidebar then shows a section per host, under the Directories: its running sessions (a small house in their status colour) and the ones written in the last 7 days, without bots (a session or tmux name with `bot`, `claude-tg` or `watch`) and `claude -p` runs. A host that can't be reached shows **Offline**. Pressing a session opens a terminal that runs `ssh -t <ssh> tmux new-session -A -s <name>`: it attaches to the tmux session the session runs in, or starts one that resumes it. While that terminal is open the session has a character, its label ending in `@casita`. Closing the terminal closes only ssh: the remote tmux and the session in it keep running.
 
 ### Characters
 

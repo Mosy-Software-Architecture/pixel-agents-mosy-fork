@@ -1,11 +1,12 @@
 import { useCallback } from 'react';
 
-import { resumeConversation } from '../conversations/useConversations.js';
+import { openRemoteConversation, resumeConversation } from '../conversations/useConversations.js';
 import { transport } from '../transport/index.js';
 import type { Directory } from './useExtensionMessages.js';
 
 /**
- * Launching an agent and resuming a conversation, from either shell. Both
+ * Launching an agent, resuming a conversation and opening a remote host's
+ * session, from either shell. Each
  * tell the terminal drawer first (`expectLaunch`), so the agent's terminal
  * opens focused once the server announces it.
  */
@@ -26,5 +27,12 @@ export function useLaunchActions(expectLaunch: () => void) {
     },
     [expectLaunch],
   );
-  return { launch, resume };
+  const openRemote = useCallback(
+    (host: string, sessionId: string) => {
+      expectLaunch();
+      openRemoteConversation(host, sessionId);
+    },
+    [expectLaunch],
+  );
+  return { launch, resume, openRemote };
 }

@@ -244,7 +244,7 @@ function relocatedRecord(provider: HookProvider, record: PersistedAgent): Persis
 /** What every agent with a terminal gets, launched or reattached: a place in
  *  the office, its drawer tab, its removal when the process ends, and its
  *  transcript watched. */
-function admitTerminalAgent(
+export function admitTerminalAgent(
   deps: LaunchStandaloneAgentDeps,
   agent: AgentState,
   session: TerminalSession,

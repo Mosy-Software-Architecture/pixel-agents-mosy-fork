@@ -27,6 +27,8 @@ interface MobileMenuProps {
   onResume: (sessionId: string, directoryPath: string) => void;
   /** A running conversation pressed: go to its agent's terminal. */
   onOpenAgent: (agentId: number) => void;
+  /** A remote host's session pressed: open it (the shell then slides to its terminal). */
+  onOpenRemote: (host: string, sessionId: string) => void;
   statusFor: (agentId: number) => TabStatus | null;
   /** Open the conversation search (over the menu). */
   onSearch?: (scope: ConversationSearchScope) => void;
@@ -53,6 +55,7 @@ export function MobileMenu({
   showConversations,
   onResume,
   onOpenAgent,
+  onOpenRemote,
   statusFor,
   onSearch,
 }: MobileMenuProps) {
@@ -124,6 +127,10 @@ export function MobileMenu({
             }}
             onOpenAgent={(agentId) => {
               onOpenAgent(agentId);
+              onClose();
+            }}
+            onOpenRemote={(host, sessionId) => {
+              onOpenRemote(host, sessionId);
               onClose();
             }}
             statusFor={statusFor}

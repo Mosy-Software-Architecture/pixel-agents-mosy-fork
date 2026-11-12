@@ -14,6 +14,8 @@ export interface AgentSessionInfo {
   color?: string;
   /** The agent definition it runs as. Kept for later; nothing shows it yet. */
   agentSetting?: string;
+  /** The remote host the session runs on (the label says `@host`). */
+  host?: string;
 }
 
 const infoById = new Map<number, AgentSessionInfo>();
@@ -44,6 +46,7 @@ export function setAgentSessionInfo(id: number, info: AgentSessionInfo): void {
     ...(info.title ? { title: info.title } : {}),
     ...(info.color ? { color: info.color } : {}),
     ...(info.agentSetting ? { agentSetting: info.agentSetting } : {}),
+    ...(info.host ? { host: info.host } : {}),
   };
   if (Object.keys(next).length === 0) infoById.delete(id);
   else infoById.set(id, next);
