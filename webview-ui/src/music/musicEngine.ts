@@ -27,7 +27,7 @@ import {
   type Song,
   type WaveEvent,
 } from './composer.js';
-import { connectMediaSession } from './mediaSession.js';
+import { connectMediaSession, quietLoopWav } from './mediaSession.js';
 import { chooseMood, MOOD_KEYS, type MoodKey, type MoodSetting } from './moods.js';
 import { newSeed } from './rng.js';
 import { parseSongCode } from './songCode.js';
@@ -83,8 +83,8 @@ const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 class OfficeRadio {
   private ac: AudioContext | null = null;
-  /** What the speakers play: the mix, as a media stream (see init). */
-  private output!: HTMLAudioElement;
+  /** Plays alongside the mix so the system's media controls list the radio (see init). */
+  private anchor!: HTMLAudioElement;
   private master!: GainNode;
   private channelGain = {} as Record<Channel, GainNode>;
   private pulseWaves: PeriodicWave[] = [];
@@ -135,11 +135,13 @@ class OfficeRadio {
     if (this.playing) {
       this.playing = false;
       this.stopClock();
-      this.output.pause();
+      this.anchor.pause();
       await ac.suspend();
     } else {
+      // Started first, inside the click's user activation. Only the system's
+      // controls depend on it: the music plays without it.
+      this.anchor.play().catch(() => {});
       await ac.resume();
-      await this.output.play();
       this.playing = true;
       if (this.nextTime < ac.currentTime) this.nextTime = ac.currentTime + 0.05;
       this.schedule();
@@ -250,15 +252,16 @@ class OfficeRadio {
     analyser.minDecibels = -75;
     analyser.maxDecibels = -20;
     this.analyser = analyser;
-    // The mix reaches the speakers through an <audio> element, not straight
-    // from the context: the system's media controls (macOS Now Playing, the
-    // media keys) list a page only while one of its media elements plays.
-    const stream = ac.createMediaStreamDestination();
-    this.master.connect(tone).connect(stream);
-    this.output = document.createElement('audio');
-    this.output.hidden = true;
-    this.output.srcObject = stream.stream;
-    document.body.append(this.output);
+    this.master.connect(tone).connect(ac.destination);
+    // The system's media controls (macOS Now Playing, Control Center) list a
+    // page only while one of its media elements plays content: a file longer
+    // than 5 s, not a MediaStream (Chrome treats those as calls). So beside the
+    // mix, an <audio> loops a few seconds of near-silent noise (mediaSession.ts).
+    this.anchor = document.createElement('audio');
+    this.anchor.hidden = true;
+    this.anchor.loop = true;
+    this.anchor.src = URL.createObjectURL(new Blob([quietLoopWav()], { type: 'audio/wav' }));
+    document.body.append(this.anchor);
     // The visualizer listens to the mix before the volume, so its bars look
     // the same at any volume (and keep moving while muted).
     const mix = ac.createGain();
