@@ -261,8 +261,6 @@ export const REMOTE_LISTING_MAX_AGE_MS = 25_000;
 export const REMOTE_LISTING_TIMEOUT_MS = 20_000;
 /** ssh's ConnectTimeout for the listing and the transcript tail, seconds. */
 export const REMOTE_SSH_CONNECT_TIMEOUT_S = 6;
-/** Conversations listed per remote host, newest first. */
-export const REMOTE_CONVERSATIONS_PER_HOST = 10;
 /** Under ~/.pixel-agents: the local copies of the remote transcripts open in
  *  the office (remote/<host>/<sessionId>.jsonl). */
 export const REMOTE_MIRROR_DIR_NAME = 'remote';

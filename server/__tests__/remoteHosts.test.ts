@@ -192,6 +192,19 @@ describe('the remote listing cache', () => {
     expect(remoteSessionOf([casita], 'casita', 'nope')).toBeUndefined();
   });
 
+  it('sends every work session of the listing: the sidebar pages them', async () => {
+    const rows = Array.from({ length: 14 }, (_, i) => ({
+      ...row,
+      sessionId: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      mtime: 1_000 + i,
+    }));
+    await refreshRemoteHosts([casita], 0, async () => output(rows));
+    const [host] = remoteHostConversations([casita], new AgentStateStore());
+    expect(host.conversations).toHaveLength(14);
+    // Newest first.
+    expect(host.conversations[0].sessionId).toBe(rows[13].sessionId);
+  });
+
   it('lists services after the work sessions, kind on each row', async () => {
     const svcId = '000427f6-24f4-456d-99f9-4812b0870168';
     const loneId = '7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d';

@@ -12,6 +12,7 @@ import {
 } from '../constants.js';
 import { transport } from '../transport/index.js';
 import { ConversationRow, type ConversationSearchScope } from './ConversationList.js';
+import { remoteSearch } from './remote.js';
 
 interface ConversationSearchProps {
   /** Where it searches when it opens; null = closed. */
@@ -21,6 +22,8 @@ interface ConversationSearchProps {
   onResume: (sessionId: string, directoryPath: string) => void;
   /** A running one pressed: go to its agent. */
   onOpenAgent: (agentId: number) => void;
+  /** A remote host's session pressed: open it. */
+  onOpenRemote: (host: string, sessionId: string) => void;
   statusFor: (agentId: number) => TabStatus | null;
   /** Rows sized for a finger (the phone). */
   roomy?: boolean;
@@ -31,9 +34,11 @@ interface ConversationSearchProps {
 /**
  * Every conversation, newest first, searched by title: "See all" and the
  * sidebar's search field open it, a Directory's "See all" opens it on that
- * Directory alone (a chip to drop, to search everywhere). The server does the
- * searching (the office only holds what the sidebar shows); results come a
- * page at a time, the next asked for as the list scrolls near its end.
+ * Directory alone (a chip to drop, to search everywhere), a remote host's on
+ * that host's listing. The server does the searching (the office only holds
+ * what the sidebar shows); results come a page at a time, the next asked for
+ * as the list scrolls near its end. A host's listing is the sidebar's, so it
+ * is searched here, kept fresh by the sidebar's own refreshes.
  * Mounted at App's top level, so both shells show it.
  */
 export function ConversationSearch(props: ConversationSearchProps) {
@@ -46,7 +51,13 @@ export function ConversationSearch(props: ConversationSearchProps) {
       zIndex={zIndex}
       className="w-[min(520px,100%)]"
     >
-      {scope && <SearchBody key={scope.directoryPath ?? ''} {...props} scope={scope} />}
+      {scope && (
+        <SearchBody
+          key={scope.remoteHost ? `host:${scope.remoteHost.name}` : (scope.directoryPath ?? '')}
+          {...props}
+          scope={scope}
+        />
+      )}
     </Modal>
   );
 }
@@ -65,6 +76,7 @@ function SearchBody({
   onClose,
   onResume,
   onOpenAgent,
+  onOpenRemote,
   statusFor,
   roomy = false,
 }: ConversationSearchProps & { scope: ConversationSearchScope }) {
@@ -75,8 +87,26 @@ function SearchBody({
   const [answer, setAnswer] = useState<Results | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const directoryPath = directory?.directoryPath;
+  // A remote host's listing (and when it came), searched here; null once its
+  // chip is dropped.
+  const [hostListing, setHostListing] = useState(() =>
+    scope.remoteHost ? { host: scope.remoteHost, receivedAt: Date.now() } : null,
+  );
+  const host = hostListing?.host;
+  const hostName = host?.name;
+  const hostResults = host ? remoteSearch(host, sent) : null;
 
   useEffect(() => inputRef.current?.focus(), []);
+
+  // The sidebar refreshes the host's listing while it shows: take each one.
+  useEffect(() => {
+    if (hostName === undefined) return;
+    return transport.onMessage((msg) => {
+      if (msg.type !== 'conversationsLoaded') return;
+      const fresh = msg.remoteHosts?.find((h) => h.name === hostName);
+      if (fresh) setHostListing({ host: fresh, receivedAt: Date.now() });
+    });
+  }, [hostName]);
 
   // Typing settles before it is sent, and starts again from the first page.
   useEffect(() => {
@@ -89,6 +119,7 @@ function SearchBody({
 
   // Ask; take only the answer to the latest question.
   useEffect(() => {
+    if (hostName !== undefined) return;
     const unsubscribe = transport.onMessage((msg) => {
       if (msg.type !== 'conversationSearchResults') return;
       if (msg.query !== sent || msg.directoryPath !== directoryPath || msg.limit !== limit) return;
@@ -101,7 +132,7 @@ function SearchBody({
       ...(directoryPath !== undefined ? { directoryPath } : {}),
     });
     return unsubscribe;
-  }, [sent, directoryPath, limit]);
+  }, [sent, directoryPath, limit, hostName]);
 
   // The answer to this search (at any page), if it came.
   const current =
@@ -131,7 +162,11 @@ function SearchBody({
           type="text"
           value={query}
           placeholder={
-            directory ? `Search ${directory.directoryName ?? ''}` : 'Search conversations'
+            host
+              ? `Search ${host.name}`
+              : directory
+                ? `Search ${directory.directoryName ?? ''}`
+                : 'Search conversations'
           }
           spellCheck={false}
           autoCapitalize="off"
@@ -140,19 +175,20 @@ function SearchBody({
           className="flex-1 min-w-0 text-sm py-4 bg-transparent border-none outline-none rounded-none text-text"
         />
       </div>
-      {directory && (
+      {(host || directory) && (
         <span className="flex">
           <button
             type="button"
             data-testid="conversation-search-scope"
             onClick={() => {
+              setHostListing(null);
               setDirectory(null);
               setLimit(CONVERSATION_SEARCH_PAGE);
             }}
             title="Search every Directory"
             className="flex items-center gap-6 max-w-full py-1 px-6 bg-active-bg border-2 border-accent rounded-none cursor-pointer text-2xs text-text"
           >
-            <span className="min-w-0 truncate">{directory.directoryName}</span>
+            <span className="min-w-0 truncate">{host ? host.name : directory?.directoryName}</span>
             <PixelIcon name="close" scale={1} />
           </button>
         </span>
@@ -162,22 +198,44 @@ function SearchBody({
         onScroll={onScroll}
         className="flex flex-col -mx-6 h-[min(420px,60vh)] overflow-y-auto quiet-scrollbar"
       >
-        {shown.map(({ conversation, directoryPath: path, directoryName }) => (
-          <ConversationRow
-            key={conversation.sessionId}
-            conversation={conversation}
-            where={directory ? undefined : directoryName}
-            onPress={() => {
-              if (conversation.agentId !== undefined) onOpenAgent(conversation.agentId);
-              else onResume(conversation.sessionId, path);
-              onClose();
-            }}
-            statusFor={statusFor}
-            now={answer?.receivedAt ?? 0}
-            roomy={roomy}
-          />
-        ))}
-        {shown.length === 0 && (
+        {host &&
+          hostResults?.map((conversation) => (
+            <ConversationRow
+              key={conversation.sessionId}
+              conversation={conversation}
+              remoteHost={host.name}
+              onPress={() => {
+                if (conversation.agentId !== undefined) onOpenAgent(conversation.agentId);
+                else onOpenRemote(host.name, conversation.sessionId);
+                onClose();
+              }}
+              statusFor={statusFor}
+              now={hostListing?.receivedAt ?? 0}
+              roomy={roomy}
+            />
+          ))}
+        {hostResults?.length === 0 && (
+          <p className="m-0 px-10 py-8 text-sm text-text-muted">
+            {sent ? 'No conversation matches.' : 'No conversations yet.'}
+          </p>
+        )}
+        {!host &&
+          shown.map(({ conversation, directoryPath: path, directoryName }) => (
+            <ConversationRow
+              key={conversation.sessionId}
+              conversation={conversation}
+              where={directory ? undefined : directoryName}
+              onPress={() => {
+                if (conversation.agentId !== undefined) onOpenAgent(conversation.agentId);
+                else onResume(conversation.sessionId, path);
+                onClose();
+              }}
+              statusFor={statusFor}
+              now={answer?.receivedAt ?? 0}
+              roomy={roomy}
+            />
+          ))}
+        {!host && shown.length === 0 && (
           <p className="m-0 px-10 py-8 text-sm text-text-muted">
             {current === null
               ? 'Searching…'
