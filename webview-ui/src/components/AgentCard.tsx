@@ -5,6 +5,7 @@ import { characterLabel } from '../characters/profiles.js';
 import { CARD_CONTEXT_BAR_HEIGHT_PX, CARD_MUGSHOT_CROP_TOP_ROW } from '../constants.js';
 import { ContextBar } from '../office/ContextBar.js';
 import { contextLeft, useAgentContextUsed } from '../office/contextGauge.js';
+import { pendingAckOf, subscribePendingAck } from '../office/pendingAck.js';
 import { agentSessionInfo, subscribeAgentSessionInfo } from '../office/sessionLabel.js';
 import type { CardVariant, CloseMode } from './cardBar.js';
 import { cardTitleLines } from './cardBar.js';
@@ -68,17 +69,29 @@ export function AgentCard({
 }: AgentCardProps) {
   const contextUsed = useAgentContextUsed(agentId);
   const title = useCardTitle(agentId, appearance.palette);
+  // The agent rang and nobody has looked yet (office/pendingAck.ts).
+  const pending = useSyncExternalStore(subscribePendingAck, () => pendingAckOf(agentId));
   return (
     <div
       className={`group relative pointer-events-auto flex items-stretch gap-1 p-1 cursor-pointer border-2 shrink-0 ${CARD_VARIANT[variant]}`}
       onClick={() => onSelect(agentId)}
       title={title}
     >
-      <CharacterMugShot
-        palette={appearance.palette}
-        repeat={appearance.repeat}
-        cropTop={CARD_MUGSHOT_CROP_TOP_ROW}
-      />
+      <span className="relative flex shrink-0">
+        <CharacterMugShot
+          palette={appearance.palette}
+          repeat={appearance.repeat}
+          cropTop={CARD_MUGSHOT_CROP_TOP_ROW}
+        />
+        {/* A ring round the mug shot until the user acknowledges the agent. */}
+        {pending && (
+          <span
+            className="absolute inset-0 pointer-events-none border-2 border-status-permission pending-ack-pulse"
+            data-testid="card-pending-ack"
+            data-pending={pending}
+          />
+        )}
+      </span>
       {/* Close on top, status dot at the bottom, both centred over the
           same column beside the mug shot. */}
       <div className="flex flex-col items-center justify-between shrink-0">

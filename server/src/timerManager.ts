@@ -1,5 +1,5 @@
 import type { AgentStateStore } from './agentStateStore.js';
-import { PERMISSION_TIMER_DELAY_MS } from './constants.js';
+import { PERMISSION_TIMER_DELAY_MS, QUIET_TURN_IDLE_MS } from './constants.js';
 import { hasPromotedBackgroundAgent } from './teamUtils.js';
 import type { AgentState } from './types.js';
 
@@ -57,6 +57,34 @@ export function clearAgentActivity(
     }
   }
   agents.broadcast({ type: 'agentStatus', id: agentId, status: 'active' });
+}
+
+/**
+ * A heuristic agent whose turn went quiet: still marked active, no foreground
+ * tool running, nothing written for QUIET_TURN_IDLE_MS. Its turn ended with no
+ * turn_duration to say so (a local command like /model or /color starts no
+ * model turn; an interrupted turn writes none), so it would read "working"
+ * until its next turn. Hook-delivered agents are left to their hooks.
+ */
+export function isQuietTurn(agent: AgentState, now: number): boolean {
+  if (agent.hookDelivered || agent.isWaiting || !agent.turnActive) return false;
+  const hasForegroundTools = agent.activeToolIds.size > agent.backgroundSpawns.size;
+  return !hasForegroundTools && now - agent.lastDataAt > QUIET_TURN_IDLE_MS;
+}
+
+/** Mark every quiet-turn agent waiting ("Done"), as a turn_duration would. */
+export function endQuietTurns(
+  agents: AgentStateStore,
+  waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
+  now = Date.now(),
+): void {
+  for (const [id, agent] of agents) {
+    if (!isQuietTurn(agent, now)) continue;
+    cancelWaitingTimer(id, waitingTimers);
+    agent.isWaiting = true;
+    agent.turnActive = false;
+    agents.broadcast({ type: 'agentStatus', id, status: 'waiting', awaitingInput: false });
+  }
 }
 
 export function cancelWaitingTimer(

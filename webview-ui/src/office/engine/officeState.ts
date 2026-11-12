@@ -25,6 +25,7 @@ import {
 } from '../layout/layoutSerializer.js';
 import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
 import { pairWorkstations } from '../layout/workstations.js';
+import { clearPendingAck } from '../pendingAck.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
 import { getLoadedCharacterCount } from '../sprites/spriteData.js';
 import type {
@@ -608,8 +609,10 @@ export class OfficeState {
   }
 
   /** Select an agent's character and have the camera follow it — what a card
-   *  tap does to the office. No-op for an agent with no character. */
+   *  tap does to the office, acknowledging its bubble as a click on the
+   *  character would. No-op for an agent with no character. */
   selectAndFollow(id: number): void {
+    this.dismissBubble(id);
     if (!this.characters.has(id)) return;
     this.selectedAgentId = id;
     this.cameraFollowId = id;
@@ -1028,8 +1031,10 @@ export class OfficeState {
     }
   }
 
-  /** Dismiss bubble on click — permission: instant, waiting: quick fade */
+  /** Dismiss bubble on click — permission: instant, waiting: quick fade.
+   *  It is also the user acknowledging the agent (office/pendingAck.ts). */
   dismissBubble(id: number): void {
+    clearPendingAck(id);
     const ch = this.characters.get(id);
     if (!ch || !ch.bubbleType) return;
     if (ch.bubbleType === 'permission') {

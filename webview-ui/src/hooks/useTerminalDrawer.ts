@@ -124,6 +124,12 @@ export function useTerminalDrawer({
     launchArmedAtRef.current = null;
   }, [terminalAgentIds]);
 
+  // A terminal coming into view is the user looking at its agent: it
+  // acknowledges the agent's bubble (office/pendingAck.ts), as a click would.
+  useEffect(() => {
+    if (isOpen && shownAgentId !== null) getOfficeState().dismissBubble(shownAgentId);
+  }, [isOpen, shownAgentId, getOfficeState]);
+
   const reveal = useCallback(
     (agentId: number) => {
       if (!terminalAgentIds.includes(agentId)) return;

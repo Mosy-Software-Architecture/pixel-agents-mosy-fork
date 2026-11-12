@@ -411,6 +411,16 @@
   }
 }
 
+/* An agent card's "needs you" ring (office/pendingAck.ts), until acknowledged. */
+.pending-ack-pulse {
+  animation: pixel-pulse 1.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pending-ack-pulse {
+    animation: none;
+  }
+}
+
 /* A toggled button's icon: squashes, overshoots, settles (the sidebar toggle). */
 @keyframes pixel-pop {
   0% {
