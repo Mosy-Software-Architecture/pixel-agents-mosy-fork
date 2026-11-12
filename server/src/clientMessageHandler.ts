@@ -45,6 +45,13 @@ import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
 import { claudeProvider, hookProviderById, hookProviders } from './providers/index.js';
 import { recentCharactersMessage, recordCharacterUse } from './recentCharacters.js';
+import {
+  configuredRemoteHosts,
+  refreshRemoteHosts,
+  remoteHostConversations,
+  remoteSessionOf,
+} from './remoteHosts.js';
+import { launchRemoteAgent } from './terminal/remoteAgentLauncher.js';
 import { launchStandaloneAgent } from './terminal/standaloneAgentLauncher.js';
 import type { TerminalSessions } from './terminal/terminalSessions.js';
 import { applyUsageBridgeChoice, usageSnapshotMessages } from './usageLimits.js';
@@ -238,17 +245,38 @@ export function handleClientMessage(
       break;
 
     case 'requestConversations': {
-      if (!ctx.ptyManager || !conversationProvider) break;
-      send({
-        type: 'conversationsLoaded',
-        directories: listConversations(
-          conversationDirectoriesFor(ctx),
-          conversationProvider,
-          liveSessions(store),
-          conversationLimitsFrom(msg.limits),
-          liveElsewhere(store, ctx.ptyManager, conversationProvider),
-        ),
-      });
+      const { ptyManager } = ctx;
+      if (!ptyManager || !conversationProvider) break;
+      const remoteHosts = configuredRemoteHosts();
+      const reply = () =>
+        send({
+          type: 'conversationsLoaded',
+          directories: listConversations(
+            conversationDirectoriesFor(ctx),
+            conversationProvider,
+            liveSessions(store),
+            conversationLimitsFrom(msg.limits),
+            liveElsewhere(store, ptyManager, conversationProvider),
+          ),
+          ...(remoteHosts.length > 0
+            ? { remoteHosts: remoteHostConversations(remoteHosts, store) }
+            : {}),
+        });
+      reply();
+      // Remote hosts answer over ssh: the list goes again once they have.
+      void refreshRemoteHosts(remoteHosts)?.then(reply);
+      break;
+    }
+
+    case 'openRemoteConversation': {
+      if (!runtime || !ctx.ptyManager) break;
+      const found = remoteSessionOf(configuredRemoteHosts(), msg.host, msg.sessionId);
+      if (!found) break;
+      launchRemoteAgent(
+        { store, runtime, ptyManager: ctx.ptyManager, provider: claudeProvider },
+        found.host,
+        found.session,
+      );
       break;
     }
 

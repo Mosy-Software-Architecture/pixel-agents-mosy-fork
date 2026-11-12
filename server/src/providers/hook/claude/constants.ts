@@ -107,3 +107,11 @@ export const CLAUDE_DEFAULT_AGENT_COLOR = 'default';
  *  under its config directory (`$CLAUDE_CONFIG_DIR`, else ~/.claude). */
 export const CLAUDE_SESSIONS_DIR_NAME = 'sessions';
 export const CLAUDE_CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR';
+
+/** How far back a remote host's past sessions are listed (remoteListing.ts):
+ *  transcripts written within this many days, besides the running ones. */
+export const REMOTE_LISTING_DAYS = 7;
+
+/** Session or tmux names of a remote host that are bots, not someone's
+ *  session: left out of the listing (the same rule as `agent remote --all`). */
+export const REMOTE_BOT_SESSION_PATTERN = /bot|claude-tg|watch/i;

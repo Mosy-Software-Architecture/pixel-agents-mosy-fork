@@ -238,3 +238,17 @@ export const NEW_CONVERSATION_TITLE = 'New conversation';
 /** Most agent ids a saved card order keeps. The order is pruned to live agents
  *  on every save, so this only bounds a hand-edited or hostile payload. */
 export const MAX_CARD_ORDER_LENGTH = 1_000;
+
+// ── Remote hosts (remoteHosts.ts) ──
+/** A remote host's listing is asked for again once it is this old (the
+ *  sidebar asks every 30 s while it shows). */
+export const REMOTE_LISTING_MAX_AGE_MS = 25_000;
+/** The longest a remote host's listing may take before the host shows offline. */
+export const REMOTE_LISTING_TIMEOUT_MS = 20_000;
+/** ssh's ConnectTimeout for the listing and the transcript tail, seconds. */
+export const REMOTE_SSH_CONNECT_TIMEOUT_S = 6;
+/** Conversations listed per remote host, newest first. */
+export const REMOTE_CONVERSATIONS_PER_HOST = 10;
+/** Under ~/.pixel-agents: the local copies of the remote transcripts open in
+ *  the office (remote/<host>/<sessionId>.jsonl). */
+export const REMOTE_MIRROR_DIR_NAME = 'remote';

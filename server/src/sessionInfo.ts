@@ -13,14 +13,20 @@ import type { AgentState } from './types.js';
  * nameless), then kept current record by record.
  */
 
-/** The `agentSessionInfo` message for an agent. */
-export function sessionInfoMessage(id: number, info: SessionInfo): Record<string, unknown> {
+/** The `agentSessionInfo` message for an agent; `host`: the remote host its
+ *  session runs on (AgentState.remoteHost), absent for a local one. */
+export function sessionInfoMessage(
+  id: number,
+  info: SessionInfo,
+  host?: string,
+): Record<string, unknown> {
   return {
     type: 'agentSessionInfo',
     id,
     title: info.title,
     color: info.color,
     agentSetting: info.agentSetting,
+    host,
   };
 }
 
@@ -42,7 +48,7 @@ function setSessionInfo(
 ): void {
   const changed = !sameInfo(agent.sessionInfo, info);
   agent.sessionInfo = info;
-  if (changed) agents.broadcast(sessionInfoMessage(agentId, info));
+  if (changed) agents.broadcast(sessionInfoMessage(agentId, info, agent.remoteHost));
 }
 
 /**

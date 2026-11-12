@@ -92,6 +92,7 @@ export type ClientMessage =
   | RequestConversations
   | SearchConversations
   | ResumeConversation
+  | OpenRemoteConversation
   | RequestDiagnostics;
 
 export interface ProviderCapabilities {
@@ -225,6 +226,7 @@ export interface AgentSessionInfo {
   title?: string;
   color?: string;
   agentSetting?: string;
+  host?: string;
 }
 
 export interface LayoutLoaded {
@@ -482,6 +484,7 @@ export interface DirectorySuggestions {
 export interface ConversationsLoaded {
   type: 'conversationsLoaded';
   directories: DirectoryConversations[];
+  remoteHosts?: RemoteHostConversations[];
 }
 
 export interface DirectoryConversations {
@@ -500,11 +503,18 @@ export interface Conversation {
   repeat?: number;
   agentId?: number;
   liveElsewhere?: LiveElsewhere;
+  remoteStatus?: string;
 }
 
 export interface LiveElsewhere {
   name?: string;
   status?: string;
+}
+
+export interface RemoteHostConversations {
+  name: string;
+  online: boolean;
+  conversations: Conversation[];
 }
 
 export interface ConversationSearchResults {
@@ -739,6 +749,12 @@ export interface ResumeConversation {
   type: 'resumeConversation';
   sessionId: string;
   directoryPath: string;
+}
+
+export interface OpenRemoteConversation {
+  type: 'openRemoteConversation';
+  host: string;
+  sessionId: string;
 }
 
 export interface RequestDiagnostics {

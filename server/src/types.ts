@@ -31,6 +31,9 @@ export interface AgentState {
   hadToolsInTurn: boolean;
   /** Directory name — the agent's origin label (only set for multi-root workspaces) */
   directoryName?: string;
+  /** The remote host its session runs on (remoteHosts.ts): its transcript is
+   *  a local copy, its terminal an ssh into the host's tmux. */
+  remoteHost?: string;
   /** Timestamp of last JSONL data received (ms since epoch) */
   lastDataAt: number;
   /** Total JSONL lines processed for this agent */

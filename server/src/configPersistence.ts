@@ -88,6 +88,35 @@ export interface PixelAgentsConfig {
    *  Machine-wide like the profiles themselves, so every office's roster
    *  agrees. See recentCharacters.ts. */
   recentCharacters: number[];
+  /** Other machines whose Claude Code sessions the sidebar lists, reached over
+   *  ssh (see remoteHosts.ts). Only ever written by hand. */
+  remoteHosts: RemoteHost[];
+}
+
+/** A machine the office reaches over ssh: `name` is what the sidebar calls it,
+ *  `ssh` the destination ssh is given (an alias from ~/.ssh/config). */
+export interface RemoteHost {
+  name: string;
+  ssh: string;
+}
+
+/** A host name or ssh destination as the office accepts it: letters, digits,
+ *  `.`, `_`, `-` and `@`, never starting with `-` (ssh would read an option). */
+const REMOTE_HOST_FIELD = /^[A-Za-z0-9._@][A-Za-z0-9._@-]*$/;
+
+/** Coerce a loose value into RemoteHost[], dropping malformed entries and
+ *  repeated names. */
+export function parseRemoteHosts(raw: unknown): RemoteHost[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RemoteHost[] = [];
+  for (const entry of raw) {
+    const { name, ssh } = (entry ?? {}) as { name?: unknown; ssh?: unknown };
+    if (typeof name !== 'string' || typeof ssh !== 'string') continue;
+    if (!REMOTE_HOST_FIELD.test(name) || !REMOTE_HOST_FIELD.test(ssh)) continue;
+    if (out.some((host) => host.name === name)) continue;
+    out.push({ name, ssh });
+  }
+  return out;
 }
 
 const DEFAULT_ADAPTER_SETTINGS: AdapterSettings = {
@@ -251,6 +280,7 @@ function emptyConfig(): PixelAgentsConfig {
     hooksEnabled: {},
     directories: [],
     recentCharacters: [],
+    remoteHosts: [],
   };
 }
 
@@ -274,6 +304,7 @@ export function readConfig(): PixelAgentsConfig {
       recentCharacters: Array.isArray(parsed.recentCharacters)
         ? parsed.recentCharacters.filter((v): v is number => Number.isInteger(v) && v >= 0)
         : [],
+      remoteHosts: parseRemoteHosts(parsed.remoteHosts),
     };
   } catch (err) {
     console.error('[Pixel Agents] Failed to read config file:', err);
