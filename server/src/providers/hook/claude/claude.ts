@@ -29,6 +29,24 @@ import { isInheritedClaudeSessionEnv } from './sessionEnv.js';
 
 // ── formatToolStatus: moved from src/transcriptParser.ts ──
 
+/**
+ * Who a SendMessage call writes to, when it names someone a reader knows: a
+ * teammate's or session's name (`lead`, `marketing`). Claude Code also
+ * addresses an agent by its id (`a3c821563f7645bd5`, a UUID) or by a socket
+ * (`uds:/tmp/cc-socks/55594.sock`); shown under the session's name, those read
+ * as part of it ("lead -> a3c8…"), so they are left out. Newer Claude Code
+ * puts the recipient in `to`, older in `recipient`.
+ */
+function messageRecipientName(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const name = raw.trim();
+  if (!name || /[:/\\]/.test(name)) return undefined;
+  if (/^[0-9a-f]{8,}$/i.test(name) || /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(name)) {
+    return undefined;
+  }
+  return name;
+}
+
 export function formatToolStatus(toolName: string, input?: unknown): string {
   const inp = (input ?? {}) as Record<string, unknown>;
   const base = (p: unknown) => (typeof p === 'string' ? path.basename(p) : '');
@@ -69,7 +87,7 @@ export function formatToolStatus(toolName: string, input?: unknown): string {
       return teamName ? `Creating team: ${teamName}` : 'Creating team';
     }
     case 'SendMessage': {
-      const recipient = typeof inp.recipient === 'string' ? inp.recipient : '';
+      const recipient = messageRecipientName(inp.to ?? inp.recipient);
       return recipient ? `-> ${recipient}` : 'Sending message';
     }
     default:
