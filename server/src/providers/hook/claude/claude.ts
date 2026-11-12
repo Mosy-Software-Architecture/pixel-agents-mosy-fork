@@ -172,6 +172,12 @@ function getAllSessionRoots(): string[] {
 // currentHookToolId state. Synthetic hook-* ids are returned for PreToolUse because
 // the real tool id arrives later via JSONL polling.
 
+/** Claude names the sub-agent a hook fires in (`agent_id`); the agent's own
+ *  hooks carry none. */
+function fromSubagent(raw: Record<string, unknown>): boolean | undefined {
+  return typeof raw.agent_id === 'string' || undefined;
+}
+
 function normalizeHookEvent(
   raw: Record<string, unknown>,
 ): { sessionId: string; event: AgentEvent } | null {
@@ -194,13 +200,17 @@ function normalizeHookEvent(
           toolName,
           input: toolInput,
           runInBackground: toolInput.run_in_background === true,
+          fromSubagent: fromSubagent(raw),
         },
       };
     }
 
     case 'PostToolUse':
     case 'PostToolUseFailure':
-      return { sessionId, event: { kind: 'toolEnd', toolId: 'current' } };
+      return {
+        sessionId,
+        event: { kind: 'toolEnd', toolId: 'current', fromSubagent: fromSubagent(raw) },
+      };
 
     case 'Stop':
       return { sessionId, event: { kind: 'turnEnd' } };

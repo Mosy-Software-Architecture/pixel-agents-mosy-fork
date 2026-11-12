@@ -22,8 +22,11 @@ export type AgentEvent =
        *  `run_in_background` on Agent/Task). Handlers use this to suppress ghost
        *  sub-agent characters for teammate spawns. */
       runInBackground?: boolean;
+      /** The tool runs inside a sub-agent sharing the session (Claude names it
+       *  with `agent_id`), not in the agent's own turn. */
+      fromSubagent?: boolean;
     }
-  | { kind: 'toolEnd'; toolId: string }
+  | { kind: 'toolEnd'; toolId: string; fromSubagent?: boolean }
   | {
       kind: 'turnEnd';
       /** True for a late idle report rather than the turn end itself

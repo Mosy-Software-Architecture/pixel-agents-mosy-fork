@@ -1,6 +1,6 @@
 /**
  * Agents that rang for the user and haven't been looked at yet: a turn that
- * ended (`agentStatus` waiting: Stop), a question the agent asked
+ * ended (`agentStatus` waiting: Stop, see statusRings), a question the agent asked
  * (`awaitingInput`: AskUserQuestion, ExitPlanMode) or a permission prompt —
  * every time the chime sounds. While pending, the character keeps its bubble
  * (ToolOverlay) and the agent's card a ring (AgentCard), so after the chime
@@ -48,8 +48,26 @@ interface AgentMessage {
   id?: unknown;
   status?: unknown;
   awaitingInput?: unknown;
+  pausedForSpawns?: unknown;
+  silent?: unknown;
   permissionActive?: unknown;
   runInBackground?: unknown;
+}
+
+/** Whether an `agentStatus` waiting message is news for the user, the one
+ *  the done chime sounds for: a live turn end (it always says whether it
+ *  awaits input), but not a lead pausing while its background agents run
+ *  (`pausedForSpawns`), nor a state update (`silent`: a connect's replay, a
+ *  turn end the office never saw start). */
+export function statusRings(
+  msg: Pick<AgentMessage, 'status' | 'awaitingInput' | 'pausedForSpawns' | 'silent'>,
+): boolean {
+  return (
+    msg.status === 'waiting' &&
+    typeof msg.awaitingInput === 'boolean' &&
+    !msg.silent &&
+    !msg.pausedForSpawns
+  );
 }
 
 /** A server message's effect on its agent's pending state: start one, clear
@@ -58,9 +76,7 @@ export function pendingAckChange(msg: AgentMessage): PendingAck | 'clear' | null
   switch (msg.type) {
     case 'agentStatus':
       if (msg.status === 'active') return 'clear';
-      // A live turn end always says whether it awaits input; the status a
-      // connect replays (agentActivityResend) doesn't, and rings no one.
-      return msg.status === 'waiting' && typeof msg.awaitingInput === 'boolean' ? 'waiting' : null;
+      return statusRings(msg) ? 'waiting' : null;
     case 'agentToolPermission':
       return 'permission';
     case 'agentToolStart':

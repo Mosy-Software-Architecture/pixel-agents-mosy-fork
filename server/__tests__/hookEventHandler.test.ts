@@ -232,6 +232,151 @@ describe('HookEventHandler', () => {
     expect(mockWebview.messages).toEqual([]);
   });
 
+  // ── Which turn ends ring for the user ────────────────────────
+  // The webview chimes (and pends) a waiting status unless it is `silent` or
+  // `pausedForSpawns`: these pin what the server says for each turn end.
+
+  const lastStatus = () =>
+    [...mockWebview.messages].reverse().find((m) => m.type === 'agentStatus');
+
+  it('Notification idle_prompt ending a turn the office thought live is silent', () => {
+    // A ghost turn (the office missed its end): idle_prompt closes it a minute
+    // late, which is no news for the user: no chime, no pending, no stand-up.
+    const agent = createTestAgent({ id: 1, turnActive: true });
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'Notification',
+      session_id: 'sess-1',
+      notification_type: 'idle_prompt',
+    });
+
+    expect(agent.isWaiting).toBe(true);
+    expect(lastStatus()).toMatchObject({ status: 'waiting', awaitingInput: false, silent: true });
+  });
+
+  it('Stop closing a turn the office saw start rings (not silent, not paused)', () => {
+    const agent = createTestAgent({ id: 1, turnActive: true });
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+
+    handler.handleEvent('claude', { hook_event_name: 'Stop', session_id: 'sess-1' });
+
+    const status = lastStatus();
+    expect(status).toMatchObject({ status: 'waiting', awaitingInput: false });
+    expect(status?.silent).toBeUndefined();
+    expect(status?.pausedForSpawns).toBeUndefined();
+  });
+
+  it('Stop on an agent with no turn seen (restored or adopted at rest) is silent', () => {
+    const agent = createTestAgent({ id: 1 });
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+
+    handler.handleEvent('claude', { hook_event_name: 'Stop', session_id: 'sess-1' });
+
+    expect(lastStatus()).toMatchObject({ status: 'waiting', silent: true });
+  });
+
+  it('Stop with live background spawns is a pause: pausedForSpawns, no ring', () => {
+    // The lead launched two background agents and ended its turn to wait on
+    // them: Claude fires Stop, but the work goes on.
+    const agent = createTestAgent({ id: 1, turnActive: true });
+    agent.backgroundSpawns.set('toolu_a', { taskId: 'a1' });
+    agent.backgroundSpawns.set('toolu_b', { taskId: 'b1' });
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+
+    handler.handleEvent('claude', { hook_event_name: 'Stop', session_id: 'sess-1' });
+
+    expect(lastStatus()).toMatchObject({
+      status: 'waiting',
+      awaitingInput: false,
+      pausedForSpawns: 2,
+    });
+    expect(agent.isWaiting).toBe(true);
+    expect(agent.turnActive).toBe(false);
+  });
+
+  it('Stop after the spawns ended is the real end: it rings', () => {
+    const agent = createTestAgent({ id: 1, turnActive: true });
+    agent.backgroundSpawns.set('toolu_a', { taskId: 'a1' });
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+    handler.handleEvent('claude', { hook_event_name: 'Stop', session_id: 'sess-1' });
+    expect(lastStatus()?.pausedForSpawns).toBe(1);
+
+    // The completion notice ends the spawn; the notice wakes the lead (a
+    // user record in its transcript starts the turn), which then stops.
+    agent.backgroundSpawns.delete('toolu_a');
+    agent.turnActive = true;
+    agent.isWaiting = false;
+    handler.handleEvent('claude', { hook_event_name: 'Stop', session_id: 'sess-1' });
+
+    const status = lastStatus();
+    expect(status).toMatchObject({ status: 'waiting', awaitingInput: false });
+    expect(status?.pausedForSpawns).toBeUndefined();
+    expect(status?.silent).toBeUndefined();
+  });
+
+  it("a background agent's tool hook (agent_id) leaves a paused lead paused", () => {
+    // Background agents share the lead's session: their PreToolUse would take
+    // the lead for working again and end its pause.
+    const agent = createTestAgent({ id: 1, turnActive: true });
+    agent.backgroundSpawns.set('toolu_a', { taskId: 'a1' });
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+    handler.handleEvent('claude', { hook_event_name: 'Stop', session_id: 'sess-1' });
+    mockWebview.messages.length = 0;
+
+    for (const hook_event_name of ['PreToolUse', 'PostToolUse']) {
+      handler.handleEvent('claude', {
+        hook_event_name,
+        session_id: 'sess-1',
+        agent_id: 'a1',
+        tool_name: 'Bash',
+        tool_input: { command: 'npm test' },
+      });
+    }
+
+    expect(mockWebview.messages).toEqual([]);
+    expect(agent.isWaiting).toBe(true);
+  });
+
+  it('SubagentStop never emits a waiting status for the lead', () => {
+    const agent = createTestAgent({ id: 1, turnActive: true });
+    agent.backgroundSpawns.set('toolu_a', { taskId: 'a1' });
+    agent.activeToolIds.add('toolu_a');
+    agent.activeToolNames.set('toolu_a', 'Agent');
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'SubagentStop',
+      session_id: 'sess-1',
+      agent_id: 'a1',
+      agent_transcript_path: '/test/sess-1/subagents/agent-a1.jsonl',
+    });
+
+    expect(waitingIds()).toEqual([]);
+    expect(agent.isWaiting).toBe(false);
+  });
+
+  it('SessionEnd marks the agent waiting silently', () => {
+    const agent = createTestAgent({ id: 1, turnActive: true });
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'SessionEnd',
+      session_id: 'sess-1',
+      reason: 'prompt_input_exit',
+    });
+
+    expect(lastStatus()).toMatchObject({ status: 'waiting', silent: true });
+  });
+
   // ── Questions to the user (AskUserQuestion, ExitPlanMode) ────
 
   for (const toolName of ['AskUserQuestion', 'ExitPlanMode']) {

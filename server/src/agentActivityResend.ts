@@ -72,12 +72,19 @@ export function resendAgentActivity(
     }
 
     // 4. Waiting status, or active: a turn between two tools has no live tool
-    // to say so, and a restored agent starts at rest.
+    // to say so, and a restored agent starts at rest. Silent: a snapshot, not
+    // a turn that just ended (no chime, nothing pending).
+    // Waiting mid-turn is a question to the user; after the turn, a lead with
+    // live spawns is only paused on them.
     if (agent.isWaiting) {
+      const pausedForSpawns = agent.turnActive ? 0 : agent.backgroundSpawns.size;
       send({
         type: 'agentStatus',
         id,
         status: 'waiting',
+        awaitingInput: agent.turnActive || undefined,
+        pausedForSpawns: pausedForSpawns || undefined,
+        silent: true,
       });
     } else if (agent.turnActive) {
       send({ type: 'agentStatus', id, status: 'active' });

@@ -48,7 +48,7 @@ describe('isQuietTurn', () => {
 });
 
 describe('endQuietTurns', () => {
-  it('marks a quiet agent waiting ("Done") once and leaves the others', () => {
+  it('marks a quiet agent waiting ("Done") once, silently, and leaves the others', () => {
     const store = new AgentStateStore();
     store.set(1, agent({ id: 1 }));
     store.set(2, agent({ id: 2, lastDataAt: NOW }));
@@ -58,7 +58,10 @@ describe('endQuietTurns', () => {
     endQuietTurns(store, new Map(), NOW);
     endQuietTurns(store, new Map(), NOW + QUIET_TURN_IDLE_MS);
 
-    expect(sent).toEqual([{ type: 'agentStatus', id: 1, status: 'waiting', awaitingInput: false }]);
+    // No transcript record said the turn ended: a guess rings nothing.
+    expect(sent).toEqual([
+      { type: 'agentStatus', id: 1, status: 'waiting', awaitingInput: false, silent: true },
+    ]);
     expect(store.get(1)?.isWaiting).toBe(true);
     expect(store.get(1)?.turnActive).toBe(false);
     expect(store.get(2)?.isWaiting).toBe(false);

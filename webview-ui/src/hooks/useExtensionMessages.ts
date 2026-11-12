@@ -6,6 +6,7 @@ import { castStore } from '../characters/castStore.js';
 import { startOfficeSync } from '../characters/officeSprites.js';
 import { cardOrderOf } from '../components/cardBar.js';
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
+import { applyAgentStatus } from '../office/agentStatusMessage.js';
 import { clearAgentContextUsed, setAgentContextUsed } from '../office/contextGauge.js';
 import { setShowDirectoryNames } from '../office/directoryNames.js';
 import type { ExistingAgentMeta, PendingAgent } from '../office/engine/existingAgents.js';
@@ -639,11 +640,7 @@ export function useExtensionMessages(
           if (status === 'active') return omitKey(prev, id);
           return { ...prev, [id]: status };
         });
-        os.setAgentActive(id, status === 'active');
-        if (status === 'waiting') {
-          os.showWaitingBubble(id, msg.awaitingInput === true);
-          playDoneSound();
-        }
+        if (applyAgentStatus(os, msg)) playDoneSound();
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number;
         setAgentTools((prev) => {

@@ -15,6 +15,7 @@ import {
   sessionStartClear,
   sessionStartResume,
   sessionStartStartup,
+  stop,
   subagentStart,
   taskCompleted,
   teammateIdle,
@@ -1030,13 +1031,12 @@ test.describe('Hooks ON / lifecycle', () => {
     narrator.check('closed JSONL never re-adopted during cooldown; count stays 1');
   });
 
-  // verify playDoneSound() fires on agentStatus: 'waiting'.
+  // verify playDoneSound() fires when a turn ends for the user (Stop), and
+  // that a late turn end (Notification idle_prompt) is silent.
   // The webview's notificationSound.ts records every invocation into
   // window.__pixelAgentsTestHooks.playedSounds (a test-only marker that runs BEFORE the
-  // soundEnabled gate). We trigger waiting state by sending an idle_prompt
-  // notification hook (the same hook path the spawn-paths test uses to surface "Might be waiting for
-  // input") and assert the sound was dispatched.
-  test('done sound chime fires on agentStatus waiting @area:cross-cutting', async ({
+  // soundEnabled gate).
+  test('done sound chime fires on Stop, not on idle_prompt @area:cross-cutting', async ({
     pixelAgents,
   }) => {
     const { frame, tmpHome, workspaceDir, mockLogFile, narrator } = pixelAgents;
@@ -1066,43 +1066,49 @@ test.describe('Hooks ON / lifecycle', () => {
     // pre-registration buffer (same pattern as the spawn-paths external test).
     await sendHookEvent(serverConfig, sessionStartStartup(sessionId, workspaceDir, transcriptPath));
 
-    // Drive the agent active first (so the waiting transition is a real state
-    // change rather than a no-op on a never-active agent).
+    const playedKinds = () =>
+      frame.evaluate(() => {
+        const w = window as Window & {
+          __pixelAgentsTestHooks?: { playedSounds?: Array<{ kind: string }> };
+        };
+        return (w.__pixelAgentsTestHooks?.playedSounds ?? []).map((s) => s.kind);
+      });
+    const resetSounds = () =>
+      frame.evaluate(() => {
+        const w = window as Window & {
+          __pixelAgentsTestHooks?: { playedSounds?: unknown[] };
+        };
+        if (w.__pixelAgentsTestHooks) w.__pixelAgentsTestHooks.playedSounds = [];
+      });
+
+    // Drive the agent active first: only a turn the office saw start rings.
     await sendHookEvent(serverConfig, preToolUseBash(sessionId, 'npm test'));
     await expectOverlayCount(frame, 1);
     await expectOverlayVisible(frame, 'Running: npm test');
     narrator.check('external agent active — "Running: npm test"');
 
     // Reset the marker AFTER active-state dispatch so we only capture sounds
-    // triggered by the idle_prompt under test.
-    await frame.evaluate(() => {
-      const w = window as Window & {
-        __pixelAgentsTestHooks?: { playedSounds?: unknown[] };
-      };
-      if (w.__pixelAgentsTestHooks) w.__pixelAgentsTestHooks.playedSounds = [];
-    });
+    // triggered by the turn end under test.
+    await resetSounds();
 
-    narrator.step('sending an idle_prompt to end the turn (a late turn end, never a question)');
-    await sendHookEvent(serverConfig, idlePrompt(sessionId));
+    narrator.step('sending Stop to end the turn');
+    await sendHookEvent(serverConfig, stop(sessionId));
     await expectOverlayVisible(frame, 'Idle');
-    narrator.check('overlay shows "Idle" (the finished turn), not "Waiting for input"');
-
     narrator.step(
       'checking a "done" chime was dispatched (test hook — the chime is not audible in the video)',
     );
-    await expect
-      .poll(
-        async () =>
-          frame.evaluate(() => {
-            const w = window as Window & {
-              __pixelAgentsTestHooks?: { playedSounds?: Array<{ kind: string }> };
-            };
-            return (w.__pixelAgentsTestHooks?.playedSounds ?? []).map((s) => s.kind);
-          }),
-        { timeout: 5_000 },
-      )
-      .toContain('done');
+    await expect.poll(playedKinds, { timeout: 5_000 }).toContain('done');
     narrator.check('playedSounds contains a "done" entry');
+
+    narrator.step('a new turn, ended only by a late idle_prompt: silent');
+    await sendHookEvent(serverConfig, preToolUseBash(sessionId, 'npm run lint'));
+    await expectOverlayVisible(frame, 'Running: npm run lint');
+    await resetSounds();
+    await sendHookEvent(serverConfig, idlePrompt(sessionId));
+    await expectOverlayVisible(frame, 'Idle');
+    await frame.waitForTimeout(1_000);
+    expect(await playedKinds()).not.toContain('done');
+    narrator.check('no "done" entry for the idle_prompt end');
   });
 
   // verify restored agents skip the matrix-rain spawn animation.

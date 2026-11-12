@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { claudeProvider } from '../src/providers/hook/claude/claude.js';
@@ -413,5 +413,125 @@ describe('transcriptParser: questions to the user (AskUserQuestion, ExitPlanMode
     line(agentToolUseRecord('toolu_r', 'Read', { file_path: '/tmp/x' }));
     expect(statuses()).toEqual(['active']);
     expect(agent.isWaiting).toBe(false);
+  });
+});
+
+describe('transcriptParser: a lead paused for its background agents (no hooks)', () => {
+  // Replays the shape of a real lead transcript (Claude Code 2.1.31x): two
+  // Agent spawns launched in the background, a turn_duration while they run,
+  // an interim notice, the final notices, the lead's next turn and its end.
+  // Only that last end is news for the user (rings): the others are silent
+  // or `pausedForSpawns`.
+  let agents: AgentStateStore;
+  let agent: AgentState;
+  let messages: Array<Record<string, unknown>>;
+  const waitingTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  const permissionTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+  const line = (record: string) =>
+    processTranscriptLine(1, record, agents, waitingTimers, permissionTimers);
+  const statuses = () => messages.filter((m) => m.type === 'agentStatus' && m.status === 'waiting');
+  const rings = (m: Record<string, unknown>) => !m.silent && !m.pausedForSpawns;
+  const turnEnd = JSON.stringify({ type: 'system', subtype: 'turn_duration' });
+  const notice = (taskId: string, toolId: string, interim = false) =>
+    JSON.stringify({
+      type: 'queue-operation',
+      operation: 'enqueue',
+      content: [
+        '<task-notification>',
+        `<task-id>${taskId}</task-id>`,
+        `<tool-use-id>${toolId}</tool-use-id>`,
+        '<status>completed</status>',
+        interim
+          ? '<summary>Agent "x" is waiting on its own background work</summary>'
+          : '<summary>Agent "x" finished</summary>',
+        '</task-notification>',
+      ].join('\n'),
+    });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    setHookProvider(claudeProvider);
+    agents = new AgentStateStore();
+    agent = createTestAgent();
+    agents.set(1, agent);
+    messages = [];
+    agents.on('broadcast', (m) => messages.push(m as Record<string, unknown>));
+    line(JSON.stringify({ type: 'user', message: { content: 'Research two things' } }));
+    for (const [toolId, taskId] of [
+      ['toolu_a', 'a1'],
+      ['toolu_b', 'b1'],
+    ]) {
+      line(agentToolUseRecord(toolId, 'Agent', { description: `Research ${taskId}` }));
+      line(
+        toolResultRecord(
+          toolId,
+          `Async agent launched successfully. (internal)\nagentId: ${taskId} (internal)`,
+        ),
+      );
+    }
+    messages.length = 0;
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('turn_duration with live spawns is a pause: pausedForSpawns, no ring', () => {
+    line(turnEnd);
+    expect(statuses()).toEqual([
+      expect.objectContaining({ awaitingInput: false, pausedForSpawns: 2 }),
+    ]);
+    expect(rings(statuses()[0])).toBe(false);
+  });
+
+  it('an interim notice changes nothing; each final one updates the count silently', () => {
+    line(turnEnd);
+    messages.length = 0;
+
+    line(notice('a1', 'toolu_a', true));
+    expect(statuses()).toEqual([]);
+
+    line(notice('a1', 'toolu_a'));
+    expect(statuses()).toEqual([expect.objectContaining({ pausedForSpawns: 1, silent: true })]);
+
+    line(notice('b1', 'toolu_b'));
+    // The last one leaves the lead at rest, silently: nothing rang yet.
+    expect(statuses()).toHaveLength(2);
+    expect(statuses()[1]).toMatchObject({ silent: true });
+    expect(statuses()[1].pausedForSpawns).toBeUndefined();
+    expect(statuses().filter(rings)).toEqual([]);
+  });
+
+  it("the lead's turn after the last notice is the real end: it rings once", () => {
+    line(turnEnd);
+    line(notice('a1', 'toolu_a'));
+    line(notice('b1', 'toolu_b'));
+    // The notice wakes the lead: Claude writes it as a user record.
+    line(JSON.stringify({ type: 'user', message: { content: '<task-notification>…' } }));
+    line(
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Both done.' }] },
+      }),
+    );
+    line(turnEnd);
+
+    const ringing = statuses().filter(rings);
+    expect(ringing).toHaveLength(1);
+    expect(ringing[0]).toMatchObject({ awaitingInput: false });
+  });
+
+  it('a hand-back turn that ends while another spawn runs is still a pause', () => {
+    line(turnEnd);
+    line(notice('a1', 'toolu_a'));
+    line(
+      JSON.stringify({
+        type: 'user',
+        message: { content: 'Another Claude session sent a message: …' },
+      }),
+    );
+    line(turnEnd);
+
+    expect(statuses().filter(rings)).toEqual([]);
+    expect(statuses().at(-1)).toMatchObject({ pausedForSpawns: 1 });
   });
 });

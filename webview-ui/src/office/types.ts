@@ -218,6 +218,9 @@ export interface Character extends Blinker {
    *  false/undefined when the agent simply finished its turn (checkmark only,
    *  label falls through to idle). */
   waitingAwaitingInput?: boolean;
+  /** A lead whose turn ended while this many of its background agents still
+   *  run (`agentStatus.pausedForSpawns`): it pauses, its work isn't done. */
+  pausedForSpawns?: number;
   /** Countdown timer for bubble (waiting: 2→0, permission: unused) */
   bubbleTimer: number;
   /** Timer to stay seated while inactive after seat reassignment (counts down to 0) */
