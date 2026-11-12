@@ -1,5 +1,4 @@
 import type { Conversation, RemoteHostConversations } from '../../../core/src/messages.js';
-import type { TabStatus } from '../components/AgentCard.js';
 
 /**
  * The sidebar's remote hosts (conversationsLoaded.remoteHosts): each host's
@@ -9,7 +8,7 @@ import type { TabStatus } from '../components/AgentCard.js';
 
 /** What a remote session is doing, in the CLI's words, as the office's
  *  status: busy is working, waiting needs the user, anything else is idle. */
-export function remoteActivity(status: string): TabStatus {
+export function remoteActivity(status: string): 'working' | 'attention' | 'idle' {
   if (status === 'busy') return 'working';
   if (status === 'waiting') return 'attention';
   return 'idle';
@@ -19,11 +18,11 @@ export function remoteActivity(status: string): TabStatus {
  *  runs it (its card's status), or it runs on its host (the host's word for
  *  it). The icon is the round dot, or the house on a remote host's row. Null:
  *  it runs nowhere, and the time shows. */
-export function rowMark(
+export function rowMark<Status extends string>(
   conversation: Conversation,
   remote: boolean,
-  statusFor: (agentId: number) => TabStatus | null,
-): { icon: 'dot' | 'remote'; status: TabStatus | null } | null {
+  statusFor: (agentId: number) => Status | null,
+): { icon: 'dot' | 'remote'; status: Status | ReturnType<typeof remoteActivity> | null } | null {
   const icon = remote ? 'remote' : 'dot';
   if (conversation.agentId !== undefined) {
     return { icon, status: statusFor(conversation.agentId) };

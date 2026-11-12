@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Conversation } from '../../core/src/messages.js';
-import type { TabStatus } from '../src/components/AgentCard.js';
 import { cardTitleLines } from '../src/components/cardBar.js';
 import {
   remoteActivity,
@@ -17,7 +16,7 @@ const conversation = (extra: Partial<Conversation> = {}): Conversation => ({
   ...extra,
 });
 
-const statusFor = (id: number): TabStatus | null => (id === 7 ? 'attention' : null);
+const statusFor = (id: number): 'attention' | null => (id === 7 ? 'attention' : null);
 
 describe("a remote host's rows", () => {
   it("say what the host's session is doing in the office's words", () => {
