@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   cardOrderOf,
+  cardTitleLines,
   cardVariant,
   closeMode,
   mergeOrder,
@@ -72,5 +73,31 @@ describe('reorderByPointer', () => {
   it('skips cards that are not laid out', () => {
     const partial = (id: number) => (id === 2 ? null : mid(id));
     expect(reorderByPointer([1, 2, 3], 1, partial, 200)).toEqual([2, 1, 3]);
+  });
+});
+
+describe('cardTitleLines', () => {
+  it('names the character first and the session below it', () => {
+    expect(
+      cardTitleLines({ agentId: 2, characterName: 'Aura', sessionTitle: 'fix the build' }),
+    ).toEqual(['Aura', 'fix the build']);
+  });
+
+  it('stands in "Agent N" for a session with no name', () => {
+    expect(cardTitleLines({ agentId: 2, characterName: 'Aura' })).toEqual(['Aura', 'Agent 2']);
+    expect(cardTitleLines({ agentId: 2, characterName: 'Aura', sessionTitle: '' })).toEqual([
+      'Aura',
+      'Agent 2',
+    ]);
+  });
+
+  it('is "Agent N" alone when neither is known (an external char_N.png, no session name)', () => {
+    expect(cardTitleLines({ agentId: 2 })).toEqual(['Agent 2']);
+  });
+
+  it('shows the session name alone for a character with no name to show', () => {
+    expect(cardTitleLines({ agentId: 2, sessionTitle: 'fix the build' })).toEqual([
+      'fix the build',
+    ]);
   });
 });

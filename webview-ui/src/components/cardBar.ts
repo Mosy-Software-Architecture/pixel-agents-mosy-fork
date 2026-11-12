@@ -79,3 +79,25 @@ export function reorderByPointer(
   }
   return [...others.slice(0, insertAt), dragId, ...others.slice(insertAt)];
 }
+
+/**
+ * A card's tooltip, one line each: the name of the character its agent wears
+ * (the roster's name for it), then the session's name. Either may be unknown:
+ * an external char_N.png character has no name, and a session gets one only
+ * once the user renames it or the CLI titles it. `Agent <id>` stands in for
+ * the session's name, so a card always says something.
+ */
+export function cardTitleLines({
+  agentId,
+  characterName,
+  sessionTitle,
+}: {
+  agentId: number;
+  characterName?: string;
+  sessionTitle?: string;
+}): string[] {
+  const lines: string[] = [];
+  if (characterName) lines.push(characterName);
+  lines.push(sessionTitle || `Agent ${agentId}`);
+  return lines;
+}
