@@ -155,6 +155,17 @@ function shownHostDirectoriesFor(ctx: ClientMessageContext): HostDirectoryEntry[
     : [];
 }
 
+/**
+ * The Directories the conversation sidebar lists: every host Directory, shown
+ * in the drawer or not, plus the user's. The Show setting gates the launch
+ * drawer only: the sidebar groups the sessions that exist, and hiding the
+ * start directory (where every session of a host with no Directories of its
+ * own lives) used to empty it.
+ */
+function conversationDirectoriesFor(ctx: ClientMessageContext) {
+  return listDirectories(hostDirectoriesFor(ctx));
+}
+
 /** The drawer's Directories as this client is sent them (shown host entries + the user's). */
 function directoriesMessage(ctx: ClientMessageContext) {
   return {
@@ -230,7 +241,7 @@ export function handleClientMessage(
       send({
         type: 'conversationsLoaded',
         directories: listConversations(
-          listDirectories(shownHostDirectoriesFor(ctx)),
+          conversationDirectoriesFor(ctx),
           conversationProvider,
           liveSessions(store),
           conversationLimitsFrom(msg.limits),
@@ -248,7 +259,7 @@ export function handleClientMessage(
         type: 'conversationSearchResults',
         ...query,
         ...searchConversations(
-          listDirectories(shownHostDirectoriesFor(ctx)),
+          conversationDirectoriesFor(ctx),
           conversationProvider,
           liveSessions(store),
           query,

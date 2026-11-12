@@ -1151,6 +1151,25 @@ describe('clientMessageHandler: standalone terminal control plane', () => {
     expect(broadcasts).toEqual([{ type: 'directoriesLoaded', directories: [] }]);
   });
 
+  it('toggling Show Start Directory never empties the conversation sidebar', () => {
+    const { manager } = workingPtyManager();
+    const conversationDirs = () => {
+      sent = [];
+      dispatch({ type: 'requestConversations' }, ctx({ ptyManager: manager }));
+      const loaded = sent.find((m) => m.type === 'conversationsLoaded');
+      return (loaded?.directories as Array<{ path: string }>).map((d) => d.path);
+    };
+
+    for (const enabled of [true, false, true, false]) {
+      dispatch({ type: 'setShowHostDirectories', enabled }, ctx({ ptyManager: manager }));
+      // the drawer follows the setting...
+      const drawer = broadcasts.at(-1)?.directories as unknown[];
+      expect(drawer).toHaveLength(enabled ? 1 : 0);
+      // ...the sidebar keeps grouping the start directory's sessions
+      expect(conversationDirs()).toEqual([process.cwd()]);
+    }
+  });
+
   it('hiding the host Directories leaves user-defined ones listed', () => {
     const { manager } = workingPtyManager();
     const target = path.join(tempHome, 'side-project');
