@@ -22,3 +22,24 @@ export function recentAcross(
     .sort((a, b) => b.conversation.updatedAt - a.conversation.updatedAt)
     .slice(0, count);
 }
+
+/**
+ * What the sidebar's Recent section lists. With one Directory, Recent stands
+ * in for its section (no "By Directory" block, it would repeat Recent): every
+ * conversation the server sent for it, and `more` when older ones exist, so
+ * Recent gets that section's "Show 5 more". With several, the `count` newest
+ * across every Directory, and a section per Directory below.
+ */
+export function recentSection(
+  directories: readonly DirectoryConversations[],
+  count: number,
+): { rows: PlacedConversation[]; more: boolean; byDirectory: boolean } {
+  if (directories.length === 1) {
+    return {
+      rows: recentAcross(directories, Infinity),
+      more: directories[0].more === true,
+      byDirectory: false,
+    };
+  }
+  return { rows: recentAcross(directories, count), more: false, byDirectory: true };
+}

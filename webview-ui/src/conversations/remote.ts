@@ -1,4 +1,5 @@
 import type { Conversation, RemoteHostConversations } from '../../../core/src/messages.js';
+import { CONVERSATIONS_PER_DIRECTORY, CONVERSATIONS_SHOW_MORE_STEP } from '../constants.js';
 
 /**
  * The sidebar's remote hosts (conversationsLoaded.remoteHosts): each host's
@@ -6,6 +7,7 @@ import type { Conversation, RemoteHostConversations } from '../../../core/src/me
  * a small house where a running one has its status dot. Services (a `svc-`
  * name, `remoteKind: 'service'`) follow in a Services group, marked with a
  * gear; pressing one attaches to its tmux, so one outside tmux can't be.
+ * Each group pages like a Directory: five rows, then "Show 5 more".
  */
 
 /** Whether a remote row is a service. */
@@ -22,6 +24,51 @@ export function remoteGroups(host: RemoteHostConversations): {
     work: host.conversations.filter((c) => !isService(c)),
     services: host.conversations.filter(isService),
   };
+}
+
+/** How many rows of a host's groups show, where not the default five
+ *  (CONVERSATIONS_PER_DIRECTORY): raised by "Show 5 more", forgotten on
+ *  reload and whenever a Directory section opens or shuts. */
+export interface RemoteShown {
+  work?: number;
+  services?: number;
+}
+
+/** A host's groups as the sidebar shows them: the first `shown` of each, and
+ *  whether more are behind a "Show 5 more". */
+export function remotePage(
+  host: RemoteHostConversations,
+  shown: RemoteShown = {},
+): { work: Conversation[]; services: Conversation[]; moreWork: boolean; moreServices: boolean } {
+  const groups = remoteGroups(host);
+  const work = shown.work ?? CONVERSATIONS_PER_DIRECTORY;
+  const services = shown.services ?? CONVERSATIONS_PER_DIRECTORY;
+  return {
+    work: groups.work.slice(0, work),
+    services: groups.services.slice(0, services),
+    moreWork: groups.work.length > work,
+    moreServices: groups.services.length > services,
+  };
+}
+
+/** `shown` after a group's "Show 5 more". */
+export function remoteShowMore(shown: RemoteShown, group: keyof RemoteShown): RemoteShown {
+  return {
+    ...shown,
+    [group]: (shown[group] ?? CONVERSATIONS_PER_DIRECTORY) + CONVERSATIONS_SHOW_MORE_STEP,
+  };
+}
+
+/** A host's rows whose title holds every word of `query` (any case), in the
+ *  sidebar's order: the search scoped to a host (the server's titleMatches,
+ *  run over the listing the sidebar already holds). */
+export function remoteSearch(host: RemoteHostConversations, query: string): Conversation[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const { work, services } = remoteGroups(host);
+  return [...work, ...services].filter((c) => {
+    const title = c.title.toLowerCase();
+    return words.every((word) => title.includes(word));
+  });
 }
 
 /** Whether pressing a remote row does anything: a service runs outside tmux

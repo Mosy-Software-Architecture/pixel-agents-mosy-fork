@@ -1000,6 +1000,10 @@ function App() {
             openAgentFromSidebar(agentId);
           }
         }}
+        onOpenRemote={(host, sessionId) => {
+          openRemoteAndFocus(host, sessionId);
+          if (isMobile) menu.close();
+        }}
         statusFor={terminalDrawer.statusFor}
         roomy={isMobile}
       />

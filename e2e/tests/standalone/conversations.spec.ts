@@ -110,19 +110,17 @@ test.describe('Standalone / conversation sidebar', () => {
       .filter({ hasText: 'Refactor the parser' });
     await expect(row).toBeVisible();
     await expect(running).toHaveCount(0);
-    // …and under its Directory, which starts collapsed and expands on a press.
+    // …and only there: with one Directory, Recent stands in for its section.
     const titled = sidebar
       .getByTestId('conversation-row')
       .filter({ hasText: 'Refactor the parser' });
     await expect(titled).toHaveCount(1);
-    const header = sidebar
-      .locator('button[aria-expanded]')
-      .filter({ hasText: path.basename(standalone.workspaceDir) });
-    await expect(header).toHaveAttribute('aria-expanded', 'false');
-    await header.click();
-    await expect(titled).toHaveCount(2);
-    await header.click();
-    await expect(titled).toHaveCount(1);
+    await expect(sidebar.getByText('By Directory', { exact: true })).toHaveCount(0);
+    await expect(
+      sidebar
+        .locator('button[aria-expanded]')
+        .filter({ hasText: path.basename(standalone.workspaceDir) }),
+    ).toHaveCount(0);
 
     await arrangeNextClaudeInvocation(
       standalone.tmpHome,
@@ -149,7 +147,7 @@ test.describe('Standalone / conversation sidebar', () => {
     await expect(running).toHaveCount(1);
   });
 
-  test('a Directory lists five past conversations, shows five more on request, and the search finds any of them @area:standalone', async ({
+  test('Recent and a Directory list five past conversations, show five more on request, and the search finds any of them @area:standalone', async ({
     page,
     standalone,
   }) => {
@@ -172,9 +170,41 @@ test.describe('Standalone / conversation sidebar', () => {
     await page.reload();
 
     const sidebar = page.getByTestId('conversation-sidebar');
-    const recent = sidebar.getByTestId('recent-conversations').getByTestId('conversation-row');
+    const recentSection = sidebar.getByTestId('recent-conversations');
+    const recent = recentSection.getByTestId('conversation-row');
     await expect(recent).toHaveCount(5);
     await expect(recent.first()).toContainText('Chat 8');
+
+    // One Directory: no "By Directory" (it would repeat Recent), and Recent
+    // takes its "Show 5 more".
+    await expect(sidebar.getByText('By Directory', { exact: true })).toHaveCount(0);
+    await recentSection.getByTestId('conversations-show-more').click();
+    await expect(recent).toHaveCount(8);
+    await expect(recent.last()).toContainText('Chat 1');
+    await expect(recentSection.getByTestId('conversations-show-more')).toHaveCount(0);
+
+    // "See all": every conversation, searched by title.
+    await sidebar.getByTestId('conversations-see-all').click();
+    const search = page.getByTestId('conversation-search');
+    const results = search.getByTestId('conversation-row');
+    await expect(results).toHaveCount(8);
+    await search.getByTestId('conversation-search-input').fill('chat 3');
+    await expect(results).toHaveCount(1);
+    await expect(results).toContainText('Chat 3');
+    await page.keyboard.press('Escape');
+    await expect(search).toBeHidden();
+
+    // A second Directory: Recent goes back to the five newest, and each
+    // Directory gets its section under "By Directory".
+    const second = path.join(standalone.workspaceDir, 'second-directory');
+    fs.mkdirSync(second, { recursive: true });
+    const modal = await openDirectoryModal(page);
+    await modal.getByPlaceholder('Project name').fill('Second Directory');
+    await modal.getByPlaceholder('~/code/my-project').fill(second);
+    await modal.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(modal).toBeHidden();
+    await expect(sidebar.getByText('By Directory', { exact: true })).toHaveCount(1);
+    await expect(recent).toHaveCount(5);
 
     const header = sidebar
       .locator('button[aria-expanded]')
@@ -193,17 +223,6 @@ test.describe('Standalone / conversation sidebar', () => {
     await header.click();
     await header.click();
     await expect(rows).toHaveCount(5);
-
-    // "See all": every conversation, searched by title.
-    await sidebar.getByTestId('conversations-see-all').click();
-    const search = page.getByTestId('conversation-search');
-    const results = search.getByTestId('conversation-row');
-    await expect(results).toHaveCount(8);
-    await search.getByTestId('conversation-search-input').fill('chat 3');
-    await expect(results).toHaveCount(1);
-    await expect(results).toContainText('Chat 3');
-    await page.keyboard.press('Escape');
-    await expect(search).toBeHidden();
 
     // A Directory's "See all" searches that Directory; its chip widens it.
     await section.getByTestId('conversations-directory-search').click();
