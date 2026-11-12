@@ -118,6 +118,16 @@ describe('activityIcon', () => {
     ).toBe('hourglass');
   });
 
+  it('shows the hourglass for a lead paused on its background agents', () => {
+    // Its spawns' rows still run, but the lead itself waits on them.
+    const spawn = tool('Subtask: Research a');
+    expect(activityIcon(state({ isActive: false, pausedForSpawns: 2, tools: [spawn] }))).toBe(
+      'hourglass',
+    );
+    // A pause is not waiting on the user: not sticky.
+    expect(STICKY_ACTIVITY_ICONS.has('hourglass')).toBe(false);
+  });
+
   it('reads the cup for an idle agent, its last tool or not', () => {
     expect(IDLE_ICON).toBe('coffee');
     expect(activityIcon(state({ isActive: false }))).toBe('coffee');

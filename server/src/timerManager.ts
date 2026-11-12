@@ -3,6 +3,30 @@ import { PERMISSION_TIMER_DELAY_MS, QUIET_TURN_IDLE_MS } from './constants.js';
 import { hasPromotedBackgroundAgent } from './teamUtils.js';
 import type { AgentState } from './types.js';
 
+/**
+ * The `agentStatus` a finished turn broadcasts ("Done"). Call it before the
+ * agent is marked at rest: it reads `turnActive`. A turn end rings for the
+ * user only when the office saw that turn start and the agent's work is
+ * over. With background spawns still live, a lead only pauses until they
+ * report (`pausedForSpawns`); a turn the office never saw start (an agent
+ * restored or adopted at rest, a late idle report) is `silent`.
+ */
+export function turnEndStatus(
+  agentId: number,
+  agent: AgentState,
+  opts: { silent?: boolean } = {},
+): Record<string, unknown> {
+  const spawns = agent.backgroundSpawns.size;
+  return {
+    type: 'agentStatus',
+    id: agentId,
+    status: 'waiting',
+    awaitingInput: false,
+    pausedForSpawns: spawns > 0 ? spawns : undefined,
+    silent: opts.silent || !agent.turnActive || undefined,
+  };
+}
+
 export function clearAgentActivity(
   agent: AgentState | undefined,
   agentId: number,
@@ -73,7 +97,8 @@ export function isQuietTurn(agent: AgentState, now: number): boolean {
   return !hasForegroundTools && now - agent.lastDataAt > QUIET_TURN_IDLE_MS;
 }
 
-/** Mark every quiet-turn agent waiting ("Done"), as a turn_duration would. */
+/** Mark every quiet-turn agent waiting ("Done"), as a turn_duration would,
+ *  but silently: no transcript record said the turn ended. */
 export function endQuietTurns(
   agents: AgentStateStore,
   waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
@@ -82,9 +107,10 @@ export function endQuietTurns(
   for (const [id, agent] of agents) {
     if (!isQuietTurn(agent, now)) continue;
     cancelWaitingTimer(id, waitingTimers);
+    const status = turnEndStatus(id, agent, { silent: true });
     agent.isWaiting = true;
     agent.turnActive = false;
-    agents.broadcast({ type: 'agentStatus', id, status: 'waiting', awaitingInput: false });
+    agents.broadcast(status);
   }
 }
 
@@ -109,18 +135,13 @@ export function startWaitingTimer(
   const timer = setTimeout(() => {
     waitingTimers.delete(agentId);
     const agent = agents.get(agentId);
-    if (agent) {
-      agent.isWaiting = true;
-      agent.turnActive = false;
-    }
-    agents.broadcast({
-      type: 'agentStatus',
-      id: agentId,
-      status: 'waiting',
-      // Heuristic text-idle timer: the turn ended without a clear idle signal,
-      // so this is "Done", not "Waiting for input".
-      awaitingInput: false,
-    });
+    if (!agent) return;
+    // Heuristic text-idle timer: the turn ended without a clear idle signal,
+    // so this is "Done", not "Waiting for input".
+    const status = turnEndStatus(agentId, agent);
+    agent.isWaiting = true;
+    agent.turnActive = false;
+    agents.broadcast(status);
   }, delayMs);
   waitingTimers.set(agentId, timer);
 }

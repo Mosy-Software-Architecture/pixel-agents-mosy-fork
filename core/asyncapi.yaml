@@ -301,6 +301,21 @@ components:
             Only meaningful when status is "waiting". True when the agent went
             idle waiting on the user (drives the "Waiting for input" label);
             absent/false means the agent finished its turn ("Done").
+        pausedForSpawns:
+          type: integer
+          minimum: 1
+          description: >-
+            Only with status "waiting". The lead's turn ended while this many
+            background agents it spawned still run: it pauses until they
+            report, its work is not over. Rings no chime and leaves nothing
+            pending; the office shows "Waiting on N background agents".
+        silent:
+          type: boolean
+          description: >-
+            A state update, not an event for the user: the status a connect
+            replays, or a turn end the office never saw start (a late idle
+            report). Rings no chime, leaves nothing pending and plays no
+            turn-end animation.
 
     AgentActivityStatus:
       description: Activity state of an agent.

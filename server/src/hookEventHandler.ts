@@ -6,7 +6,7 @@ import { SESSION_END_GRACE_MS } from './constants.js';
 import { pathsMatch } from './pathKey.js';
 import type { SessionRouter } from './sessionRouter.js';
 import { getInlineTeammates, hasInlineTeammates, hasPromotedBackgroundAgent } from './teamUtils.js';
-import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
+import { cancelPermissionTimer, cancelWaitingTimer, turnEndStatus } from './timerManager.js';
 import { notifyBackgroundAgentCompleted } from './transcriptParser.js';
 import type { AgentState } from './types.js';
 
@@ -325,6 +325,17 @@ export class HookEventHandler {
     // Dispatch on normalized AgentEvent.kind, not raw hook event names.
     // The TeammateIdle / TaskCompleted hooks normalize to `subagentTurnEnd` -- both
     // retain their raw payload for the team-routing handler's identity extraction.
+    // A tool hook from one of a lead's background agents (same session) while
+    // the lead itself is between turns: the agent's own transcript shows it
+    // (subagentWatch); taking it for the lead's would end its pause.
+    if (
+      (normEvent.kind === 'toolStart' || normEvent.kind === 'toolEnd') &&
+      normEvent.fromSubagent &&
+      !agent.turnActive
+    ) {
+      return;
+    }
+
     switch (normEvent.kind) {
       case 'sessionEnd':
         return this.handleSessionEnd(normEvent, agent, agentId);
@@ -348,8 +359,9 @@ export class HookEventHandler {
         // idle_prompt comes a minute after any unanswered turn: it only ends a
         // turn nothing else ended, and never means "waiting for input" (that
         // is an AskUserQuestion / ExitPlanMode call, see handlePreToolUse).
+        // Late by a minute, it is never news for the user: silent.
         if (normEvent.idle && agent.isWaiting) return;
-        return this.handleStop(agent, agentId);
+        return this.markAgentWaiting(agent, agentId, { silent: normEvent.idle });
       case 'subagentTurnEnd':
         // Handles TeammateIdle AND TaskCompleted -- both normalize here. The normalized
         // `reason` field discriminates; the team-provider's extractTeammateNameFromEvent(raw)
@@ -384,9 +396,10 @@ export class HookEventHandler {
     // All other reasons (exit, logout, prompt_input_exit) are final -- despawn immediately.
     const expectsFollowUp = reason === 'clear' || reason === 'resume';
 
+    // The session ending is no turn end for the user: silent.
     if (expectsFollowUp) {
       agent.pendingClear = true;
-      this.markAgentWaiting(agent, agentId);
+      this.markAgentWaiting(agent, agentId, { silent: true });
       if (debug)
         console.log(
           `[Pixel Agents] Hook: Agent ${agentId} - SessionEnd(reason=${reason}), awaiting possible SessionStart`,
@@ -401,7 +414,7 @@ export class HookEventHandler {
     } else {
       // Immediate cleanup for exit/logout. onSessionEnd → removeTeammates in the
       // ViewProvider cleans up all teammates of this lead at once.
-      this.markAgentWaiting(agent, agentId);
+      this.markAgentWaiting(agent, agentId, { silent: true });
       this.lifecycleCallbacks.onSessionEnd?.(agentId, reason ?? 'unknown');
     }
   }
@@ -660,11 +673,6 @@ export class HookEventHandler {
     }
   }
 
-  /** Handle Stop: Claude finished responding, mark agent as waiting. */
-  private handleStop(agent: AgentState, agentId: number): void {
-    this.markAgentWaiting(agent, agentId);
-  }
-
   /** The agent's current hook tool asks the user something (AskUserQuestion,
    *  ExitPlanMode): it waits for an answer, not for an approval. */
   private asksUser(agent: AgentState): boolean {
@@ -751,7 +759,11 @@ export class HookEventHandler {
    * agents), cancels timers, and notifies the webview. Same logic as the turn_duration
    * handler in transcriptParser.ts.
    */
-  private markAgentWaiting(agent: AgentState, agentId: number): void {
+  private markAgentWaiting(
+    agent: AgentState,
+    agentId: number,
+    opts: { silent?: boolean } = {},
+  ): void {
     cancelWaitingTimer(agentId, this.waitingTimers);
     cancelPermissionTimer(agentId, this.permissionTimers);
 
@@ -796,19 +808,15 @@ export class HookEventHandler {
       }
     }
 
+    // A finished turn ("Done"; waiting for input is a question the agent
+    // asked, handlePreToolUse), or only a pause while background spawns run.
+    const status = turnEndStatus(agentId, agent, opts);
     agent.isWaiting = true;
     agent.turnActive = false;
     agent.permissionSent = false;
     agent.hadToolsInTurn = false;
     agent.currentHookToolId = undefined;
-    this.agents.broadcast({
-      type: 'agentStatus',
-      id: agentId,
-      status: 'waiting',
-      // A finished turn ("Done"); waiting for input is a question the agent
-      // asked (handlePreToolUse).
-      awaitingInput: false,
-    });
+    this.agents.broadcast(status);
   }
 
   /** Clean up timers and maps. Called when the extension disposes. */

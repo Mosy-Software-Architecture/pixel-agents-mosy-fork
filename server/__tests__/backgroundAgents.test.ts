@@ -383,6 +383,20 @@ describe('background spawns (teams OFF) classified by sidecar name', () => {
     expect(done!.parentToolId).toBe(SPAWN_TOOL_ID);
   });
 
+  it("a watched Sub-agent's turn end never gives the lead a waiting status (no chime)", () => {
+    // Its turn_duration makes the SHADOW agent waiting; the translation must
+    // turn that into subagentToolDone only: an agentStatus for the lead would
+    // ring the done chime for a Sub-agent (sub-agents have none).
+    seedSidecar({
+      transcriptLines: [subToolUseLine(), subToolResultLine(), subTurnDurationLine()],
+    });
+    spawnAndLaunch();
+
+    expect(messages.some((m) => m.type === 'subagentToolDone')).toBe(true);
+    expect(messages.some((m) => m.type === 'agentStatus' && m.status === 'waiting')).toBe(false);
+    expect(lead.isWaiting).toBe(false);
+  });
+
   it('synthesizes subagentToolDone for live tools when the watched transcript hits turn end', () => {
     seedSidecar({ transcriptLines: [subToolUseLine(), subTurnDurationLine()] });
     spawnAndLaunch();

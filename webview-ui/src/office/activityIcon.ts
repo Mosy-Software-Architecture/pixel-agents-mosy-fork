@@ -55,15 +55,18 @@ export const IDLE_ICON: PixelIconName = 'coffee';
 /** The icon over a character. During a turn it is the running tool's, else
  *  the last tool's until the next one starts (the gaps between tools are
  *  short and would otherwise flash the hourglass); the hourglass only before
- *  the turn's first tool (thinking or writing). Idle: the cup. */
+ *  the turn's first tool (thinking or writing), and for a lead paused on its
+ *  background agents. Idle: the cup. */
 export function activityIcon({
   tools,
   isActive,
   bubble,
   awaitingInput,
+  pausedForSpawns,
 }: ActivityState): PixelIconName {
   if (bubble === 'permission') return 'hand';
   if (bubble === 'waiting') return awaitingInput ? 'question' : 'check';
+  if (pausedForSpawns) return 'hourglass';
   const active = runningTool(tools);
   if (active) return active.permissionWait ? 'hand' : toolIcon(active.status);
   if (!isActive) return IDLE_ICON;

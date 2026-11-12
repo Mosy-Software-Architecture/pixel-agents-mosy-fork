@@ -13,6 +13,7 @@ import {
   clearAgentActivity,
   startPermissionTimer,
   startWaitingTimer,
+  turnEndStatus,
 } from './timerManager.js';
 import type { AgentState } from './types.js';
 
@@ -97,6 +98,9 @@ export function endBackgroundSpawn(
   agent.activeToolStatuses.delete(toolId);
   agent.activeToolNames.delete(toolId);
   backgroundAgentCompletedCallback?.(agentId, toolId);
+  // A lead paused for its spawns: say how many are left, silently. The last
+  // one leaves it at rest; its next turn end is the one that rings.
+  if (agent.isWaiting && !agent.turnActive) agents.broadcast(turnEndStatus(agentId, agent));
   if (!agent.hookDelivered) {
     setTimeout(() => {
       agents.broadcast({ type: 'agentToolDone', id: agentId, toolId });
@@ -555,20 +559,15 @@ export function processTranscriptLine(
         }
       }
 
+      // turn_duration = the turn completed, so this is "Done" (or a lead's
+      // pause while its background spawns run).
+      const status = turnEndStatus(agentId, agent);
       agent.isWaiting = true;
       agent.turnActive = false;
       agent.permissionSent = false;
       agent.hadToolsInTurn = false;
       // Skip status post when hooks already handled it
-      if (!agent.hookDelivered) {
-        agents.broadcast({
-          type: 'agentStatus',
-          id: agentId,
-          status: 'waiting',
-          // turn_duration = the turn completed, so this is "Done".
-          awaitingInput: false,
-        });
-      }
+      if (!agent.hookDelivered) agents.broadcast(status);
     } else if (record.type && !agent.seenUnknownRecordTypes.has(record.type)) {
       // Log first occurrence of unrecognized record types to help diagnose issues
       // where Claude Code changes JSONL format. Known types we intentionally skip:

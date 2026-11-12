@@ -258,13 +258,45 @@ describe('resendAgentActivity', () => {
     store.set(1, createTestAgent({ id: 1, isWaiting: true }));
     let sent: Array<Record<string, unknown>> = [];
     resendAgentActivity((msg) => sent.push(msg), store);
-    expect(sent).toEqual([{ type: 'agentStatus', id: 1, status: 'waiting' }]);
+    expect(sent).toEqual([{ type: 'agentStatus', id: 1, status: 'waiting', silent: true }]);
 
     store = new AgentStateStore();
     store.set(2, createTestAgent({ id: 2, isWaiting: false }));
     sent = [];
     resendAgentActivity((msg) => sent.push(msg), store);
     expect(sent).toHaveLength(0);
+  });
+
+  it('replays a waiting status silently, with the spawns a paused lead waits on', () => {
+    const store = new AgentStateStore();
+    store.set(
+      1,
+      createTestAgent({
+        id: 1,
+        isWaiting: true,
+        turnActive: false,
+        backgroundSpawns: new Map([
+          ['toolu_a', { taskId: 'a1' }],
+          ['toolu_b', {}],
+        ]),
+      }),
+    );
+    const sent: Array<Record<string, unknown>> = [];
+    resendAgentActivity((msg) => sent.push(msg), store);
+    const status = sent.find((m) => m.type === 'agentStatus');
+    // A snapshot: the webview neither chimes nor pends nor animates a turn end.
+    expect(status).toMatchObject({ status: 'waiting', pausedForSpawns: 2, silent: true });
+    expect(status?.awaitingInput).toBeUndefined();
+  });
+
+  it('replays a question to the user as one (awaitingInput), still silently', () => {
+    const store = new AgentStateStore();
+    store.set(1, createTestAgent({ id: 1, isWaiting: true, turnActive: true }));
+    const sent: Array<Record<string, unknown>> = [];
+    resendAgentActivity((msg) => sent.push(msg), store);
+    expect(sent).toEqual([
+      { type: 'agentStatus', id: 1, status: 'waiting', awaitingInput: true, silent: true },
+    ]);
   });
 
   it('sends context usage only when agent has tokens', () => {

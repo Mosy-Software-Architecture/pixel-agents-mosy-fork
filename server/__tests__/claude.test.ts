@@ -148,6 +148,19 @@ describe('claudeProvider', () => {
       }
     });
 
+    it('marks tool hooks fired inside a sub-agent (agent_id) fromSubagent', () => {
+      for (const hook_event_name of ['PreToolUse', 'PostToolUse']) {
+        const own = claudeProvider.normalizeHookEvent({ hook_event_name, session_id: 's' });
+        const sub = claudeProvider.normalizeHookEvent({
+          hook_event_name,
+          session_id: 's',
+          agent_id: 'a1',
+        });
+        expect(own?.event).not.toHaveProperty('fromSubagent', true);
+        expect(sub?.event).toMatchObject({ fromSubagent: true });
+      }
+    });
+
     it('normalizes SubagentStop to subagentEnd', () => {
       const result = claudeProvider.normalizeHookEvent({
         hook_event_name: 'SubagentStop',

@@ -7,6 +7,7 @@ import {
   pendingAckChange,
   pendingAckOf,
   setPendingAck,
+  statusRings,
   subscribePendingAck,
 } from '../src/office/pendingAck.js';
 import type { OfficeLayout } from '../src/office/types.js';
@@ -33,8 +34,36 @@ describe('pendingAckChange', () => {
     expect(pendingAckChange({ type: 'agentToolPermission' })).toBe('permission');
   });
 
-  it('ignores the waiting status a connect replays (no awaitingInput field)', () => {
+  it('ignores the waiting status a connect replays (silent, no awaitingInput field)', () => {
     expect(pendingAckChange({ type: 'agentStatus', status: 'waiting' })).toBeNull();
+    expect(pendingAckChange({ type: 'agentStatus', status: 'waiting', silent: true })).toBeNull();
+    expect(
+      pendingAckChange({
+        type: 'agentStatus',
+        status: 'waiting',
+        awaitingInput: true,
+        silent: true,
+      }),
+    ).toBeNull();
+  });
+
+  it('a silent turn end (a late idle report, a turn never seen start) pends nothing', () => {
+    expect(
+      pendingAckChange({
+        type: 'agentStatus',
+        status: 'waiting',
+        awaitingInput: false,
+        silent: true,
+      }),
+    ).toBeNull();
+  });
+
+  it('a lead paused for its background agents pends nothing; its real end does', () => {
+    const paused = { type: 'agentStatus', status: 'waiting', awaitingInput: false };
+    expect(pendingAckChange({ ...paused, pausedForSpawns: 2 })).toBeNull();
+    expect(statusRings({ ...paused, pausedForSpawns: 2 })).toBe(false);
+    expect(pendingAckChange(paused)).toBe('waiting');
+    expect(statusRings(paused)).toBe(true);
   });
 
   it('clears it when the agent moves on: a turn or a tool starts, or the prompt is answered', () => {
