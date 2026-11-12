@@ -2,11 +2,23 @@ import { useSyncExternalStore } from 'react';
 
 import { useCast } from '../characters/castStore.js';
 import { characterLabel } from '../characters/profiles.js';
-import { CARD_CONTEXT_BAR_HEIGHT_PX, CARD_MUGSHOT_CROP_TOP_ROW } from '../constants.js';
+import {
+  AGENT_CARD_LABEL_WIDTH_PX,
+  CARD_CONTEXT_BAR_HEIGHT_PX,
+  CARD_MUGSHOT_CROP_TOP_ROW,
+} from '../constants.js';
 import { ContextBar } from '../office/ContextBar.js';
 import { contextLeft, useAgentContextUsed } from '../office/contextGauge.js';
 import { pendingAckOf, subscribePendingAck } from '../office/pendingAck.js';
-import { agentSessionInfo, subscribeAgentSessionInfo } from '../office/sessionLabel.js';
+import type { AgentSessionInfo } from '../office/sessionLabel.js';
+import {
+  agentSessionInfo,
+  remoteHostLabel,
+  sessionColor,
+  sessionName,
+  subscribeAgentSessionInfo,
+} from '../office/sessionLabel.js';
+import { AgentCardLabel } from './AgentCardLabel.js';
 import type { CardVariant, CloseMode } from './cardBar.js';
 import { cardTitleLines } from './cardBar.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
@@ -45,6 +57,12 @@ interface AgentCardProps {
   variant: CardVariant;
   appearance: AgentAppearance;
   status: TabStatus | null;
+  /** What the agent is doing (office/activityText.ts): the label's second
+   *  line, and the tooltip's last. */
+  activity: string;
+  /** Draw the session's name and the activity left of the mug shot (the
+   *  desktop column; the phone row has no room and keeps them in the tooltip). */
+  showLabel?: boolean;
   /** How the × shows. It is never removed (the card keeps its width so the
    *  bar doesn't reflow): `hover` (desktop) shows it while the card is
    *  hovered or the × has keyboard focus; `hidden` keeps it invisible — the
@@ -55,7 +73,8 @@ interface AgentCardProps {
   onClose: (agentId: number) => void;
 }
 
-/** One agent's card in the terminal sidebar — mug shot beside a
+/** One agent's card in the terminal sidebar — on the desktop column its
+ *  label (session name, activity), then the mug shot beside a
  *  close-button/status-dot column. The cards double as the terminal panel's
  *  tabs: clicking one selects that agent's pane. */
 export function AgentCard({
@@ -63,12 +82,15 @@ export function AgentCard({
   variant,
   appearance,
   status,
+  activity,
+  showLabel = false,
   close = 'shown',
   onSelect,
   onClose,
 }: AgentCardProps) {
   const contextUsed = useAgentContextUsed(agentId);
-  const title = useCardTitle(agentId, appearance.palette);
+  const session = useSyncExternalStore(subscribeAgentSessionInfo, () => agentSessionInfo(agentId));
+  const title = [...useCardTitle(agentId, appearance.palette, session), activity].join('\n');
   // The agent rang and nobody has looked yet (office/pendingAck.ts).
   const pending = useSyncExternalStore(subscribePendingAck, () => pendingAckOf(agentId));
   return (
@@ -76,7 +98,20 @@ export function AgentCard({
       className={`group relative pointer-events-auto flex items-stretch gap-1 p-1 cursor-pointer border-2 shrink-0 ${CARD_VARIANT[variant]}`}
       onClick={() => onSelect(agentId)}
       title={title}
+      role="group"
+      aria-label={`${sessionName(agentId, session?.title)}, ${activity}`}
+      data-testid="agent-card"
+      data-agent-id={agentId}
     >
+      {showLabel && (
+        <AgentCardLabel
+          name={sessionName(agentId, session?.title)}
+          color={sessionColor(session?.color)}
+          host={remoteHostLabel(session)}
+          activity={activity}
+          width={AGENT_CARD_LABEL_WIDTH_PX}
+        />
+      )}
       <span className="relative flex shrink-0">
         <CharacterMugShot
           palette={appearance.palette}
@@ -128,37 +163,30 @@ export function AgentCard({
           className="absolute left-0 right-0 bottom-0 pointer-events-none"
           title={`${Math.round(contextLeft(contextUsed) * 100)}% context left`}
           testId="card-context-bar"
+          pct={Math.round(contextUsed * 100)}
         />
       )}
     </div>
   );
 }
 
-/** The card's tooltip (cardTitleLines): the character's name over the session's,
- *  kept current as the cast is edited and the session is renamed. An external
- *  char_N.png character (past the cast) has no name to show: the wire carries
- *  its pixels, not its file name. */
-function useCardTitle(agentId: number, palette: number): string {
+/** The card's tooltip lines (cardTitleLines): the character's name over the
+ *  session's, kept current as the cast is edited and the session is renamed.
+ *  An external char_N.png character (past the cast) has no name to show: the
+ *  wire carries its pixels, not its file name. */
+function useCardTitle(
+  agentId: number,
+  palette: number,
+  session: AgentSessionInfo | undefined,
+): string[] {
   const cast = useCast();
-  const sessionTitle = useSyncExternalStore(
-    subscribeAgentSessionInfo,
-    () => agentSessionInfo(agentId)?.title,
-  );
-  const host = useSyncExternalStore(
-    subscribeAgentSessionInfo,
-    () => agentSessionInfo(agentId)?.host,
-  );
-  const service = useSyncExternalStore(
-    subscribeAgentSessionInfo,
-    () => agentSessionInfo(agentId)?.service,
-  );
   const profile = cast.profiles[palette];
   return cardTitleLines({
     agentId,
     // the roster card's name for it
     characterName: profile ? characterLabel(profile, palette) : undefined,
-    sessionTitle,
-    host,
-    service,
-  }).join('\n');
+    sessionTitle: session?.title,
+    host: session?.host,
+    service: session?.service,
+  });
 }

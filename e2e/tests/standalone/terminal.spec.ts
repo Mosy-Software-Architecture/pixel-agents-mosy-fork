@@ -7,7 +7,7 @@ import {
   claudeScenario,
   waitForClaudeHookSetup,
 } from '../../helpers/mock-claude';
-import { expectOverlayCount, expectOverlayVisible } from '../../helpers/office';
+import { agentCard, expectOverlayCount, expectOverlayVisible } from '../../helpers/office';
 import { clickAddAgent, setSettings } from '../../helpers/webview';
 
 /**
@@ -16,12 +16,12 @@ import { clickAddAgent, setSettings } from '../../helpers/webview';
  * follows the scenario-builder rule (e2e/README.md "Mocking model & rules"):
  * the mock performs all timed actions; the test only clicks and observes.
  */
-/** The agent cards' titles, in screen order along the bar's axis. */
+/** The agent cards, as `Agent <id>`, in screen order along the bar's axis. */
 async function cardsInOrder(page: Page, axis: 'x' | 'y'): Promise<string[]> {
-  const cards = page.locator('[title^="Agent "]');
+  const cards = page.locator('[data-testid="agent-card"]');
   const placed = await Promise.all(
     (await cards.all()).map(async (card) => ({
-      title: (await card.getAttribute('title')) ?? '',
+      title: `Agent ${await card.getAttribute('data-agent-id')}`,
       box: await card.boundingBox(),
     })),
   );
@@ -66,8 +66,8 @@ test.describe('Standalone / terminal', () => {
     await clickAddAgent(page);
 
     // Control plane: terminalSessionOpened -> an agent card (the drawer tab).
-    const agentCard = page.getByTitle('Agent 1');
-    await expect(agentCard).toBeVisible({ timeout: 15_000 });
+    const card = agentCard(page, 1);
+    await expect(card).toBeVisible({ timeout: 15_000 });
 
     // Data plane, output direction: PTY stdout → WebSocket → xterm DOM. The
     // banner only exists if the mock really ran inside the server's PTY.
@@ -87,14 +87,14 @@ test.describe('Standalone / terminal', () => {
     // Reload: the PTY outlives the socket. The reconnected page must rebuild
     // the tab (webviewReady re-announce) and replay scrollback.
     await page.reload();
-    await expect(page.getByTitle('Agent 1')).toBeVisible({ timeout: 15_000 });
+    await expect(agentCard(page, 1)).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('.xterm').first()).toContainText('mock claude session', {
       timeout: 15_000,
     });
 
     // Close from the card: PTY killed, tab removed, character despawns.
-    await page.getByTitle('Agent 1').locator('button[title="Close agent"]').click();
-    await expect(page.getByTitle('Agent 1')).toHaveCount(0);
+    await agentCard(page, 1).locator('button[title="Close agent"]').click();
+    await expect(agentCard(page, 1)).toHaveCount(0);
     await expectOverlayCount(page, 0);
   });
 
@@ -110,13 +110,13 @@ test.describe('Standalone / terminal', () => {
         claudeScenario(`standalone pty tab ${n}`).holdOpenFor(60_000).build(),
       );
       await clickAddAgent(page);
-      await expect(page.getByTitle(`Agent ${n}`)).toBeVisible({ timeout: 15_000 });
+      await expect(agentCard(page, n)).toBeVisible({ timeout: 15_000 });
     }
 
     // The FIRST tab: every pane is stacked in the same box, so a later
     // agent's hidden pane must not sit over it. Playwright's click refuses an
     // intercepted target, so the click itself is the assertion.
-    await page.getByTitle('Agent 1').click();
+    await agentCard(page, 1).click();
     const first = page.locator('.xterm:visible');
     await expect(first).toHaveCount(1);
     await expect(first).toContainText('mock claude session', { timeout: 15_000 });
@@ -129,8 +129,8 @@ test.describe('Standalone / terminal', () => {
     // card bar, and the panel's hide tab stays on screen.
     await page.setViewportSize({ width: 800, height: 800 });
     await expect(page.getByTitle('Hide terminal')).toBeInViewport({ ratio: 1 });
-    await expect(page.getByTitle('Agent 1')).toBeInViewport({ ratio: 1 });
-    await expect(page.getByTitle('Agent 2')).toBeInViewport({ ratio: 1 });
+    await expect(agentCard(page, 1)).toBeInViewport({ ratio: 1 });
+    await expect(agentCard(page, 2)).toBeInViewport({ ratio: 1 });
   });
 
   test('a card dragged on the desktop moves on an open phone too, and stays after a reload @area:standalone', async ({
@@ -144,19 +144,19 @@ test.describe('Standalone / terminal', () => {
         claudeScenario(`standalone card order ${n}`).holdOpenFor(60_000).build(),
       );
       await clickAddAgent(page);
-      await expect(page.getByTitle(`Agent ${n}`)).toBeVisible({ timeout: 15_000 });
+      await expect(agentCard(page, n)).toBeVisible({ timeout: 15_000 });
     }
 
     // A phone already showing the office: its bar lists the same cards.
     const phone = await page.context().newPage();
     await phone.setViewportSize({ width: 390, height: 844 });
     await phone.goto(page.url());
-    await expect(phone.getByTitle('Agent 2')).toBeVisible({ timeout: 30_000 });
+    await expect(agentCard(phone, 2)).toBeVisible({ timeout: 30_000 });
     expect(await cardsLeftToRight(phone)).toEqual(['Agent 1', 'Agent 2']);
 
     // Drag Agent 2 above Agent 1 in the desktop column.
-    const from = (await page.getByTitle('Agent 2').boundingBox())!;
-    const to = (await page.getByTitle('Agent 1').boundingBox())!;
+    const from = (await agentCard(page, 2).boundingBox())!;
+    const to = (await agentCard(page, 1).boundingBox())!;
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await page.mouse.down();
     await page.mouse.move(to.x + to.width / 2, to.y + 4, { steps: 8 });
@@ -170,7 +170,7 @@ test.describe('Standalone / terminal', () => {
     await phone.close();
 
     await page.reload();
-    await expect(page.getByTitle('Agent 2')).toBeVisible({ timeout: 30_000 });
+    await expect(agentCard(page, 2)).toBeVisible({ timeout: 30_000 });
     expect(await cardsTopToBottom(page)).toEqual(['Agent 2', 'Agent 1']);
   });
 

@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { expect, test } from '../../fixtures/standalone';
 import { arrangeNextClaudeInvocation, claudeScenario } from '../../helpers/mock-claude';
-import { expectOverlayCount } from '../../helpers/office';
+import { agentCard, expectOverlayCount } from '../../helpers/office';
 import { buildTurnDurationRecord } from '../../helpers/team';
 import {
   directoryPencil,
@@ -100,7 +100,7 @@ test.describe('Standalone / conversation sidebar', () => {
       .filter({ has: page.getByTestId('conversation-status') });
     await expect(running).toHaveCount(1);
     // The card's ×: the agent comes in focused, so its overlay has one too.
-    await page.getByTitle('Agent 1').locator('button[title="Close agent"]').click();
+    await agentCard(page, 1).locator('button[title="Close agent"]').click();
     await expectOverlayCount(page, 0);
 
     // Listed at the top among the newest across every Directory…

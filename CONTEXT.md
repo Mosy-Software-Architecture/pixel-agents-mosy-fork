@@ -136,15 +136,15 @@ The inactive form where the agent asked the user something and is blocked on a r
 The inactive form where the agent is blocked until the user approves a tool use. Unlike the other two forms, it can occur mid-turn.
 
 **Activity label**:
-The human-readable line describing what an agent is doing right now (e.g. "Reading foo.ts"), shown above its character.
+The human-readable line describing what an agent is doing right now (e.g. "Reading foo.ts"), shown on its card under the session's name.
 _Avoid_: status text, tool status
 
-**Speech bubble**:
-The indicator above a character announcing a form of inactivity: "…" for a permission request (stays until resolved), a checkmark for a finished turn (fades on its own).
-_Avoid_: bubble alone when ambiguous, notification
+**Activity icon**:
+The small pixel icon above a character saying at a glance what its agent is doing: the running tool's icon, an hourglass for a turn with no tool, or a form of inactivity — a hand for a permission request (stays until resolved), a question mark for waiting for input, a checkmark for a finished turn (fades on its own). The words are the activity label's, on the card.
+_Avoid_: speech bubble, badge, notification
 
 **Context gauge**:
-The small bar under an agent's activity label showing how full its context window is. Every agent has one once it has taken a turn; sub-agents never do, having no session of their own. It reads the newest turn, so it falls when a session compacts or clears — it is a level, not a total.
+The small bar along the foot of an agent's card (and under its name while its character is hovered) showing how full its context window is. Every agent has one once it has taken a turn; sub-agents never do, having no session of their own. It reads the newest turn, so it falls when a session compacts or clears — it is a level, not a total.
 _Avoid_: fuel gauge, health bar, token gauge (tokens are the unit, context is the thing)
 
 ## Office & Layout
@@ -170,7 +170,7 @@ The opt-in office view that draws the office as a lit miniature: pixel-textured 
 _Avoid_: 3D mode, HD view
 
 **Silhouette**:
-How Diorama shows a character or pet standing behind a wall: a flat figure in one neutral colour, drawn through the wall. It says only "someone is there"; status still shows through speech bubbles. Not a Ghost: a ghost is about the agent (headless), a silhouette only about the view.
+How Diorama shows a character or pet standing behind a wall: a flat figure in one neutral colour, drawn through the wall. It says only "someone is there"; status still shows through activity icons. Not a Ghost: a ghost is about the agent (headless), a silhouette only about the view.
 _Avoid_: x-ray, outline, ghost
 
 **Mood**:

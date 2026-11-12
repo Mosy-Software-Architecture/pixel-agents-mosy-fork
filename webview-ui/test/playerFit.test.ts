@@ -8,6 +8,7 @@ import {
   MUSIC_PLAYER_WIDTH_PX,
   OFFICE_MIN_WIDTH_PX,
   TERMINAL_DRAWER_MIN_WIDTH_PX,
+  TERMINAL_SIDEBAR_WIDTH_PX,
 } from '../src/constants.js';
 import { clampDrawerWidth } from '../src/hooks/drawerWidth.js';
 import { playerFit } from '../src/music/playerFit.js';
@@ -63,13 +64,18 @@ describe('playerFit', () => {
 
 describe('clampDrawerWidth and the office minimum', () => {
   it('stops a drag where the office would get narrower than its minimum', () => {
-    expect(clampDrawerWidth(5000, 1440)).toBe(1440 - OFFICE_MIN_WIDTH_PX);
+    // the card bar beside the drawer keeps its own width
+    expect(clampDrawerWidth(5000, 1440)).toBe(
+      1440 - TERMINAL_SIDEBAR_WIDTH_PX - OFFICE_MIN_WIDTH_PX,
+    );
     // the open conversation sidebar takes its width from the same row
-    expect(clampDrawerWidth(5000, 1440, 260)).toBe(1440 - 260 - OFFICE_MIN_WIDTH_PX);
+    expect(clampDrawerWidth(5000, 1440, 260)).toBe(
+      1440 - 260 - TERMINAL_SIDEBAR_WIDTH_PX - OFFICE_MIN_WIDTH_PX,
+    );
   });
 
   it('leaves a narrower drawer alone', () => {
-    expect(clampDrawerWidth(520, 1440, 260)).toBe(520);
+    expect(clampDrawerWidth(400, 1440, 260)).toBe(400);
   });
 
   it('keeps the drawer its own minimum on a window too small for both', () => {

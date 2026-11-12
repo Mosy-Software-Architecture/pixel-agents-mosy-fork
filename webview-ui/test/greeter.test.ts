@@ -139,7 +139,7 @@ test('is invisible to hit-testing — clicks pass through', () => {
   os.update(MATRIX_EFFECT_DURATION + 0.05);
   const ch = os.greeter!;
 
-  assert.equal(os.getCharacterAt(ch.x, ch.y - 1), null, 'no hit on the greeter sprite');
+  assert.equal(os.getCharacterAt(ch.x, ch.y - 1, 2), null, 'no hit on the greeter sprite');
 });
 
 /**

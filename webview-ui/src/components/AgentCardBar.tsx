@@ -15,6 +15,8 @@ interface AgentCardBarProps {
   focusedAgentId?: number | null;
   getAppearance: (agentId: number) => AgentAppearance;
   statusFor: (agentId: number) => TabStatus | null;
+  /** Each card's activity line, left of its mug shot. */
+  activityFor: (agentId: number) => string;
   onSelect: (agentId: number) => void;
   onClose: (agentId: number) => void;
   /** Persist a dragged order; absent in a read-only office. */
@@ -28,11 +30,10 @@ interface AgentCardBarProps {
  * wrapping of AgentCardList, shared by both desktop hosts. The phone shows
  * the same cards, in the same order, as a row (MobileAgentBar).
  *
- * Transparent and borderless, drawn on top of the office space: the negative
- * margin exactly cancels the column's width, so it takes no layout room and
- * overlays the office's right edge as a flex sibling of the office region.
- * Pointer events pass through the empty parts so the office stays clickable
- * underneath; only the cards are interactive. Drag a card to reorder.
+ * A column of its own right of the office, which gives up its width as it
+ * does for the terminal drawer: each card is a row, the session's name and
+ * what the agent is doing (AgentCardLabel) left of its mug shot. Drag a card
+ * to reorder.
  *
  * In standalone the cards double as the terminal panel's tabs (the panel
  * opens to the bar's right). In VS Code a card click raises that agent's
@@ -44,6 +45,7 @@ export function AgentCardBar({
   focusedAgentId = null,
   getAppearance,
   statusFor,
+  activityFor,
   onSelect,
   onClose,
   onReorder,
@@ -53,13 +55,15 @@ export function AgentCardBar({
     <AgentCardList
       agentIds={agentIds}
       axis="y"
-      className="relative z-30 h-full shrink-0 flex flex-col items-center gap-4 pt-4 overflow-y-auto pointer-events-none"
-      style={{ width: TERMINAL_SIDEBAR_WIDTH_PX, marginLeft: -TERMINAL_SIDEBAR_WIDTH_PX }}
+      className="relative z-30 h-full shrink-0 flex flex-col items-center gap-4 pt-4 overflow-y-auto bg-bg-dark"
+      style={{ width: TERMINAL_SIDEBAR_WIDTH_PX }}
       onReorder={onReorder}
       activeAgentId={activeAgentId}
       focusedAgentId={focusedAgentId}
       getAppearance={getAppearance}
       statusFor={statusFor}
+      activityFor={activityFor}
+      showLabels
       onSelect={onSelect}
       onClose={onClose}
       trailing={trailing}

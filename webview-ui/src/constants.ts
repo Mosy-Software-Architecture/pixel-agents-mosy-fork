@@ -58,6 +58,9 @@ export const SELECTED_OUTLINE_ALPHA = 1.0;
 export const HOVERED_OUTLINE_ALPHA = 0.5;
 /** Headless agents (adopted, no terminal to focus) render slightly translucent. */
 export const HEADLESS_CHARACTER_ALPHA = 0.5;
+/** Sub-agents draw a little translucent (and one zoom step smaller,
+ *  office/subagentScale.ts): help beside their lead, not agents of their own. */
+export const SUBAGENT_CHARACTER_ALPHA = 0.8;
 export const GHOST_PREVIEW_SPRITE_ALPHA = 0.5;
 export const GHOST_PREVIEW_TINT_ALPHA = 0.25;
 export const SELECTION_DASH_PATTERN: [number, number] = [4, 3];
@@ -70,8 +73,6 @@ export const SELECTION_BUTTON_SHADOW_PX = 2;
 /** Space between the buttons, and between them and the item below. */
 export const SELECTION_BUTTON_GAP_PX = 4;
 export const BUBBLE_FADE_DURATION_SEC = 0.5;
-export const BUBBLE_SITTING_OFFSET_PX = 10;
-export const BUBBLE_VERTICAL_OFFSET_PX = 24;
 export const FALLBACK_FLOOR_COLOR = '#808080';
 
 // ── Rendering - Overlay Colors (canvas, not CSS) ─────────────
@@ -235,9 +236,6 @@ export const CHARACTER_HIT_HALF_WIDTH = 8;
 export const CHARACTER_HIT_HEIGHT = 24;
 /** World px from a character's feet to its sprite's top edge (the tallest hair). */
 export const TOOL_OVERLAY_VERTICAL_OFFSET = 32;
-/** CSS px between the label's bottom and the sprite's top edge (or the bubble
- *  over it). Negative: most hair stops a little below that edge. */
-export const TOOL_OVERLAY_GAP_PX = -2;
 
 // ── Greeter + Intro bubble ──────────────────────────────────
 /** Reserved character id for the Intro's greeter. Far outside both real agent
@@ -252,12 +250,12 @@ export const GREETER_CHARACTER_ID = 'char-0';
  *  Intro is diegetic furniture over the office, not a modal, so a modal opened
  *  on top of it must cover it rather than slide underneath. */
 export const INTRO_BUBBLE_Z_INDEX = 45;
-/** ToolOverlay stacking: status label panels (selected one on top), then the
- *  characters' speech bubbles above every label. Local to the office layer
- *  (App wraps ToolOverlay in a z-0 box), so they never rise above the UI. */
+/** ToolOverlay stacking: the activity icons, then a hovered character's name
+ *  panel, then the selected one's on top. Local to the office layer (App
+ *  wraps ToolOverlay in a z-0 box), so they never rise above the UI. */
 export const OVERLAY_LABEL_Z_INDEX = 41;
-export const OVERLAY_LABEL_SELECTED_Z_INDEX = 42;
-export const OVERLAY_BUBBLE_Z_INDEX = 43;
+export const OVERLAY_LABEL_HOVERED_Z_INDEX = 42;
+export const OVERLAY_LABEL_SELECTED_Z_INDEX = 43;
 /** The greeter stands this many tiles in from the office's bottom-left corner
  *  (target tile (margin, rows-1-margin); nearest walkable tile if blocked). */
 export const GREETER_TILE_MARGIN = 3;
@@ -399,11 +397,6 @@ export const TERMINAL_DRAWER_DEFAULT_WIDTH_PX = 520;
 export const TERMINAL_DRAWER_MIN_WIDTH_PX = 320;
 /** Clamp for the drag: never wider than this fraction of the window. */
 export const TERMINAL_DRAWER_MAX_WIDTH_RATIO = 0.8;
-/** Width of the always-visible agent-card bar overlaying the office's right
- *  edge — fits the toggle handle and the stacked agent cards (40px mug shot +
- *  16px close/status column + card chrome ≈ 63px, plus a little air each
- *  side). */
-export const TERMINAL_SIDEBAR_WIDTH_PX = 72;
 /** Grab width of the drag handle on the panel's left edge. */
 export const TERMINAL_DRAWER_RESIZE_HANDLE_PX = 6;
 /** How long a launch (or resume) this client sent waits for its terminal:
@@ -613,6 +606,8 @@ export const ROSTER_HOVER_CLOSE_DELAY_MS = 250;
 /** Breathing room kept between a card and the scroller edge when the bar
  *  auto-scrolls the focused agent's card into view. */
 export const CARD_SCROLL_INTO_VIEW_MARGIN_PX = 8;
+/** How often the agent cards re-read their activity line. */
+export const CARD_ACTIVITY_REFRESH_MS = 500;
 
 // ── Mobile key bar (MobileKeyBar) ────────────────────────────
 /** Arrow-key byte sequences the trackpad key writes to the PTY. */
@@ -790,6 +785,15 @@ export const AGENT_CARD_HEIGHT_PX = MUGSHOT_CROP_SIDE_PX * MUGSHOT_RENDER_ZOOM +
  *  (one 8×8 PixelIcon wide), and 1px padding and 2px border each side. */
 export const AGENT_CARD_WIDTH_PX =
   MUGSHOT_CROP_SIDE_PX * MUGSHOT_RENDER_ZOOM + 1 + 8 * PIXEL_ICON_SCALE + 2 * (1 + 2);
+/** Desktop: the two lines left of a card's mug shot (session name, activity),
+ *  about 22 characters of the pixel font before the ellipsis. */
+export const AGENT_CARD_LABEL_WIDTH_PX = 152;
+/** Desktop: a card's whole row, its label beside the card (and a gap). */
+export const AGENT_CARD_ROW_WIDTH_PX = AGENT_CARD_LABEL_WIDTH_PX + 6 + AGENT_CARD_WIDTH_PX;
+/** Width of the always-visible agent-card column along the office's right
+ *  edge: the card rows plus a little air each side. The office gives it up,
+ *  as it does for the terminal drawer beside it. */
+export const TERMINAL_SIDEBAR_WIDTH_PX = AGENT_CARD_ROW_WIDTH_PX + 10;
 /** The roster arrow: a narrow tab right of the + card (phone bar and desktop toolbar). */
 export const ROSTER_ARROW_WIDTH_PX = 28;
 

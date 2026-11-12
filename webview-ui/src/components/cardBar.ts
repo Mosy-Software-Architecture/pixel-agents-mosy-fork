@@ -2,6 +2,8 @@
  *  what order, highlight tier, the ×, and drag-to-reorder (DOM-free, so they
  *  run on the Node runner). */
 
+import { sessionName } from '../office/sessionLabel.js';
+
 /** Card highlight tiers: 'focused' = the agent's character is selected in the
  *  office (active background, no border); 'active' = its terminal pane is the
  *  one showing (background + accent border). */
@@ -103,7 +105,7 @@ export function cardTitleLines({
 }): string[] {
   const lines: string[] = [];
   if (characterName) lines.push(characterName);
-  lines.push(sessionTitle || `Agent ${agentId}`);
+  lines.push(sessionName(agentId, sessionTitle));
   if (host) lines.push(service ? `service on ${host}` : `on ${host}`);
   return lines;
 }

@@ -28,6 +28,7 @@ import { pairWorkstations } from '../layout/workstations.js';
 import { clearPendingAck } from '../pendingAck.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
 import { getLoadedCharacterCount } from '../sprites/spriteData.js';
+import { characterScale } from '../subagentScale.js';
 import type {
   Character,
   FurnitureInstance,
@@ -1323,19 +1324,21 @@ export class OfficeState {
 
   /** Get character at pixel position (for hit testing). Returns id or null.
    *  Agents only: clicks pass straight through the consent greeter, which is
-   *  a prop, not something to select or follow. */
-  getCharacterAt(worldX: number, worldY: number): number | null {
+   *  a prop, not something to select or follow.
+   *  `zoom` sizes the sub-agents, drawn one zoom step smaller (subagentScale.ts). */
+  getCharacterAt(worldX: number, worldY: number, zoom: number): number | null {
     const chars = Array.from(this.characters.values()).sort((a, b) => b.y - a.y);
     for (const ch of chars) {
       // Skip characters that are despawning
       if (ch.matrixEffect === 'despawn') continue;
       // Character sprite is 16x24, anchored bottom-center
       // Apply sitting offset to match visual position
+      const scale = characterScale(ch.isSubagent, zoom);
       const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
-      const anchorY = ch.y + sittingOffset;
-      const left = ch.x - CHARACTER_HIT_HALF_WIDTH;
-      const right = ch.x + CHARACTER_HIT_HALF_WIDTH;
-      const top = anchorY - CHARACTER_HIT_HEIGHT;
+      const anchorY = ch.y + sittingOffset * scale;
+      const left = ch.x - CHARACTER_HIT_HALF_WIDTH * scale;
+      const right = ch.x + CHARACTER_HIT_HALF_WIDTH * scale;
+      const top = anchorY - CHARACTER_HIT_HEIGHT * scale;
       const bottom = anchorY;
       if (worldX >= left && worldX <= right && worldY >= top && worldY <= bottom) {
         return ch.id;

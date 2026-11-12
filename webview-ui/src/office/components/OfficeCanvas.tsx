@@ -411,7 +411,7 @@ export function OfficeCanvas({
 
       const pos = screenToWorld(e.clientX, e.clientY);
       if (!pos) return;
-      const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY);
+      const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY, zoom);
       // Only run pet hit-test if no character was hit (avoids redundant work).
       const petId = hitId === null ? officeState.getPetAt(pos.worldX, pos.worldY) : null;
       const tile = screenToTile(e.clientX, e.clientY);
@@ -441,6 +441,7 @@ export function OfficeCanvas({
       panRef,
       selectionButtonAt,
       clampPan,
+      zoom,
     ],
   );
 
@@ -619,7 +620,7 @@ export function OfficeCanvas({
       const pos = screenToWorld(clientX, clientY);
       if (!pos) return;
 
-      const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY);
+      const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY, zoom);
       if (hitId !== null) {
         // Dismiss any active bubble on click
         officeState.dismissBubble(hitId);
@@ -696,7 +697,7 @@ export function OfficeCanvas({
         officeState.cameraFollowId = null;
       }
     },
-    [officeState, onClick, screenToWorld, screenToTile, tapSelectsFirst],
+    [officeState, onClick, screenToWorld, screenToTile, tapSelectsFirst, zoom],
   );
 
   const handleClick = useCallback(

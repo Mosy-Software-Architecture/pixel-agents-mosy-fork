@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
-import { CARD_SCROLL_INTO_VIEW_MARGIN_PX } from '../constants.js';
+import { CARD_ACTIVITY_REFRESH_MS, CARD_SCROLL_INTO_VIEW_MARGIN_PX } from '../constants.js';
 import type { AgentAppearance, TabStatus } from './AgentCard.js';
 import { AgentCard } from './AgentCard.js';
 import { cardVariant, closeMode } from './cardBar.js';
@@ -28,6 +28,10 @@ interface AgentCardListProps {
   closeOnlyWhenActive?: boolean;
   getAppearance: (agentId: number) => AgentAppearance;
   statusFor: (agentId: number) => TabStatus | null;
+  /** Each card's activity line: its label (desktop) and its tooltip. */
+  activityFor: (agentId: number) => string;
+  /** Draw the session's name and activity left of each mug shot (desktop). */
+  showLabels?: boolean;
   onSelect: (agentId: number) => void;
   onClose: (agentId: number) => void;
   /** Drawn after the cards, in the same scroller (the desktop terminal's hide ribbon). */
@@ -52,6 +56,8 @@ export function AgentCardList({
   closeOnlyWhenActive = false,
   getAppearance,
   statusFor,
+  activityFor,
+  showLabels = false,
   onSelect,
   onClose,
   trailing,
@@ -64,6 +70,15 @@ export function AgentCardList({
     onTouchTap,
   });
   const { container, cardElement } = reorder;
+
+  // The activity line also follows what no message announces (a finished
+  // turn's bubble fading), so the cards re-read it on a timer.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (agentIds.length === 0) return;
+    const timer = setInterval(() => setTick((n) => n + 1), CARD_ACTIVITY_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [agentIds.length]);
 
   // Selecting a character on the canvas focuses an agent whose card may sit
   // outside the scroller: bring it fully into view.
@@ -98,6 +113,8 @@ export function AgentCardList({
               variant={variant}
               appearance={getAppearance(agentId)}
               status={statusFor(agentId)}
+              activity={activityFor(agentId)}
+              showLabel={showLabels}
               close={closeMode(variant, closeOnlyWhenActive)}
               onSelect={onSelect}
               onClose={onClose}
