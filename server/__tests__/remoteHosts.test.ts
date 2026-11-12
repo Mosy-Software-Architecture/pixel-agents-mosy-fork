@@ -8,6 +8,7 @@ import {
   clearRemoteListings,
   refreshRemoteHosts,
   remoteAttachArgs,
+  remoteCanOpen,
   remoteHostConversations,
   remoteSessionOf,
   remoteTailArgs,
@@ -67,6 +68,19 @@ describe('the commands run over ssh', () => {
     ]);
   });
 
+  it('only attaches to a service, exactly by its tmux name, never resuming it', () => {
+    const svc = session({ service: true, tmux: 'charalanda-bot', live: { name: 'svc-x' } });
+    expect(remoteAttachArgs(casita, svc)).toEqual([
+      '-t',
+      'minipc',
+      `tmux attach-session -t '=charalanda-bot'`,
+    ]);
+    expect(remoteCanOpen(svc)).toBe(true);
+    // Outside tmux: nothing to attach to, and it is never resumed.
+    expect(remoteCanOpen(session({ service: true, live: { name: 'svc-x' } }))).toBe(false);
+    expect(remoteCanOpen(session())).toBe(true);
+  });
+
   it('names a new tmux session after the session, never like another one', () => {
     expect(tmuxSessionName(session({ title: "Brief MOS-813: con Moisés's plan" }))).toBe(
       'brief-mos-813-con-mois-s-5c849872',
@@ -124,6 +138,7 @@ describe('the remote listing cache', () => {
             agentId: undefined,
             palette: undefined,
             repeat: undefined,
+            remoteKind: 'work',
           },
         ],
       },
@@ -171,8 +186,32 @@ describe('the remote listing cache', () => {
       remoteStatus: 'idle',
       liveElsewhere: { name: 'loose', status: 'idle' },
     });
+    expect(host.conversations[1].remoteKind).toBe('work');
     expect(remoteSessionOf([casita], 'casita', ID)?.session.tmux).toBe('mos-884');
     expect(remoteSessionOf([casita], 'vps', ID)).toBeUndefined();
     expect(remoteSessionOf([casita], 'casita', 'nope')).toBeUndefined();
+  });
+
+  it('lists services after the work sessions, kind on each row', async () => {
+    const svcId = '000427f6-24f4-456d-99f9-4812b0870168';
+    const loneId = '7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d';
+    const live = [
+      { sessionId: svcId, name: 'svc-charalanda', status: 'idle', tmux: 'mos-884:@1.%1' },
+      { sessionId: loneId, name: 'svc-axiom-alerts', status: 'idle' },
+    ];
+    const svc = { ...row, sessionId: svcId, mtime: 9_000 };
+    const lone = { ...row, sessionId: loneId, mtime: 8_000 };
+    await refreshRemoteHosts([casita], 0, async () => output([svc, lone, row], live));
+    const [host] = remoteHostConversations([casita], new AgentStateStore());
+    expect(host.conversations.map((c) => [c.sessionId, c.remoteKind])).toEqual([
+      [ID, 'work'],
+      [svcId, 'service'],
+      [loneId, 'service'],
+    ]);
+    // Outside tmux: the row says so (and the webview won't open it).
+    expect(host.conversations[2].liveElsewhere).toEqual({
+      name: 'svc-axiom-alerts',
+      status: 'idle',
+    });
   });
 });

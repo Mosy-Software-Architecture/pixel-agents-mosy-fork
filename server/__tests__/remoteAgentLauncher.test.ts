@@ -132,6 +132,7 @@ describe('launchRemoteAgent', () => {
       title: 'mos-884-outreach',
       color: 'red',
       host: 'casita',
+      remoteKind: 'work',
     });
     // A record from the tail reaches the parser.
     await until(() => broadcasts.some((m) => m.type === 'agentToolStart'));
@@ -144,5 +145,38 @@ describe('launchRemoteAgent', () => {
     manager.dispose(id);
     await until(() => !store.has(id));
     expect(fs.existsSync(mirrorPath('casita', ID))).toBe(false);
+  }, 10_000);
+
+  it('attaches to a service and never resumes it; one outside tmux opens nothing', async () => {
+    const deps = { store, runtime, ptyManager: manager, provider: claudeProvider };
+    const service: RemoteSession = {
+      ...session,
+      title: 'svc-charalanda',
+      labelLines: [rec({ type: 'custom-title', customTitle: 'svc-charalanda' })],
+      tmux: 'charalanda-bot',
+      live: { name: 'svc-charalanda', status: 'idle' },
+      service: true,
+    };
+    expect(launchRemoteAgent(deps, casita, { ...service, tmux: undefined }, tail([]))).toBeNull();
+    expect(spawned).toEqual([]);
+
+    const id = launchRemoteAgent(deps, casita, service, tail([]))!;
+    expect(spawned[0]).toEqual({
+      file: 'ssh',
+      args: ['-t', 'minipc', `tmux attach-session -t '=charalanda-bot'`],
+    });
+    expect(spawned[0].args.join(' ')).not.toContain('--resume');
+    expect(store.get(id)).toMatchObject({ remoteHost: 'casita', remoteService: true });
+    // The label: a service on its host.
+    await until(() => broadcasts.some((m) => m.type === 'agentSessionInfo'));
+    expect(broadcasts.find((m) => m.type === 'agentSessionInfo')).toMatchObject({
+      id,
+      title: 'svc-charalanda',
+      host: 'casita',
+      remoteKind: 'service',
+    });
+
+    manager.dispose(id);
+    await until(() => !store.has(id));
   }, 10_000);
 });

@@ -9,6 +9,7 @@ import {
   mirrorTranscript,
   remoteAgentOf,
   remoteAttachArgs,
+  remoteCanOpen,
   remoteTailArgs,
 } from '../remoteHosts.js';
 import { admitTerminalAgent, type LaunchStandaloneAgentDeps } from './standaloneAgentLauncher.js';
@@ -19,8 +20,9 @@ import { inheritedEnv, terminalEnv } from './terminalEnv.js';
  * terminal attaches to the host's tmux over ssh, and while it is open a
  * character works off a local copy of the transcript, fed by an ssh tail.
  * Closing the terminal ends both; the remote tmux and its session live on.
- * Returns the agent id, or null when the terminal is unavailable or the
- * session is already open.
+ * A service (`svc-` name) attaches to the tmux it runs in and nothing else.
+ * Returns the agent id, or null when the terminal is unavailable, the
+ * session is already open, or it is a service outside tmux.
  */
 export function launchRemoteAgent(
   deps: LaunchStandaloneAgentDeps,
@@ -34,6 +36,7 @@ export function launchRemoteAgent(
     return null;
   }
   if (remoteAgentOf(store, host.name, session.sessionId) !== undefined) return null;
+  if (!remoteCanOpen(session)) return null;
 
   const id = store.nextAgentId.current++;
   let terminal;
@@ -75,6 +78,7 @@ export function launchRemoteAgent(
     directoryName: path.basename(session.cwd),
     providerId: provider.id,
     remoteHost: host.name,
+    ...(session.service ? { remoteService: true } : {}),
   });
   // Only what the session does from now on: its past is the seed's titles.
   agent.fileOffset = mirror.seedBytes;

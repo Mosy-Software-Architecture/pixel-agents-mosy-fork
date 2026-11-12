@@ -5,6 +5,7 @@ import {
   agentSessionInfo,
   agentSessionInfoVersion,
   clearAgentSessionInfo,
+  remoteHostLabel,
   sessionColor,
   setAgentSessionInfo,
   subscribeAgentSessionInfo,
@@ -65,5 +66,21 @@ describe('agent session info subscribers (the agent cards follow renames)', () =
     setAgentSessionInfo(8, { title: 'again' });
     expect(calls).toBe(3);
     clearAgentSessionInfo(8);
+  });
+});
+
+describe('the label of a remote session', () => {
+  it('says where it runs, and that it is a service there', () => {
+    expect(remoteHostLabel({ title: 'lead' })).toBeUndefined();
+    expect(remoteHostLabel({ host: 'casita' })).toBe('@casita');
+    expect(remoteHostLabel({ host: 'casita', service: true })).toBe('svc @casita');
+  });
+
+  it('keeps the service mark only with a host', () => {
+    setAgentSessionInfo(9, { title: 'svc-charalanda', host: 'casita', service: true });
+    expect(agentSessionInfo(9)).toEqual({ title: 'svc-charalanda', host: 'casita', service: true });
+    setAgentSessionInfo(9, { title: 'x', service: true });
+    expect(agentSessionInfo(9)).toEqual({ title: 'x' });
+    clearAgentSessionInfo(9);
   });
 });

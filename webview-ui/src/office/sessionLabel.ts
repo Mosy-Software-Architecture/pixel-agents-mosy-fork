@@ -16,6 +16,15 @@ export interface AgentSessionInfo {
   agentSetting?: string;
   /** The remote host the session runs on (the label says `@host`). */
   host?: string;
+  /** Its remote session is a service there (the label says `svc @host`). */
+  service?: boolean;
+}
+
+/** The label's line for a remote session (`@host`, `svc @host` for a
+ *  service), or undefined for a local one. */
+export function remoteHostLabel(info: AgentSessionInfo | undefined): string | undefined {
+  if (!info?.host) return undefined;
+  return info.service ? `svc @${info.host}` : `@${info.host}`;
 }
 
 const infoById = new Map<number, AgentSessionInfo>();
@@ -47,6 +56,7 @@ export function setAgentSessionInfo(id: number, info: AgentSessionInfo): void {
     ...(info.color ? { color: info.color } : {}),
     ...(info.agentSetting ? { agentSetting: info.agentSetting } : {}),
     ...(info.host ? { host: info.host } : {}),
+    ...(info.host && info.service ? { service: true } : {}),
   };
   if (Object.keys(next).length === 0) infoById.delete(id);
   else infoById.set(id, next);

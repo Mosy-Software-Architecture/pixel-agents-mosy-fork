@@ -86,22 +86,24 @@ export function reorderByPointer(
  * an external char_N.png character has no name, and a session gets one only
  * once the user renames it or the CLI titles it. `Agent <id>` stands in for
  * the session's name, so a card always says something. A remote host's
- * session says where it runs, last.
+ * session says where it runs, last (and that it is a service there).
  */
 export function cardTitleLines({
   agentId,
   characterName,
   sessionTitle,
   host,
+  service,
 }: {
   agentId: number;
   characterName?: string;
   sessionTitle?: string;
   host?: string;
+  service?: boolean;
 }): string[] {
   const lines: string[] = [];
   if (characterName) lines.push(characterName);
   lines.push(sessionTitle || `Agent ${agentId}`);
-  if (host) lines.push(`on ${host}`);
+  if (host) lines.push(service ? `service on ${host}` : `on ${host}`);
   return lines;
 }

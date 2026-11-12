@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { Conversation } from '../../core/src/messages.js';
 import { cardTitleLines } from '../src/components/cardBar.js';
+import { ICONS } from '../src/components/ui/pixelIcons.js';
 import {
   remoteActivity,
+  remoteCanOpen,
+  remoteGroups,
   remoteHostNote,
   remoteRowTitle,
   rowMark,
@@ -72,5 +75,59 @@ describe("a remote host's rows", () => {
       'outreach',
       'on casita',
     ]);
+    expect(
+      cardTitleLines({ agentId: 3, sessionTitle: 'svc-charalanda', host: 'casita', service: true }),
+    ).toEqual(['svc-charalanda', 'service on casita']);
+  });
+});
+
+describe("a remote host's services", () => {
+  const service = (extra: Partial<Conversation> = {}) =>
+    conversation({
+      title: 'svc-charalanda',
+      remoteKind: 'service',
+      remoteStatus: 'idle',
+      ...extra,
+    });
+
+  it('come in their own group, after the work sessions', () => {
+    const work = conversation({ sessionId: 'w', remoteKind: 'work' });
+    const svc = service({ sessionId: 'v' });
+    expect(remoteGroups({ name: 'casita', online: true, conversations: [svc, work] })).toEqual({
+      work: [work],
+      services: [svc],
+    });
+  });
+
+  it('are marked with the gear, coloured by status', () => {
+    expect(rowMark(service({ remoteStatus: 'busy' }), true, statusFor)).toEqual({
+      icon: 'service',
+      status: 'working',
+    });
+    expect(rowMark(service({ agentId: 7 }), true, statusFor)).toEqual({
+      icon: 'service',
+      status: 'attention',
+    });
+  });
+
+  it('draw the gear as an 8x8 icon like the house', () => {
+    expect(ICONS.service).toHaveLength(8);
+    for (const line of ICONS.service) expect(line).toHaveLength(8);
+  });
+
+  it('attach when in tmux, and say why one outside tmux cannot be opened', () => {
+    expect(remoteCanOpen(service())).toBe(true);
+    expect(remoteRowTitle(service(), 'casita')).toBe(
+      'Attach to service "svc-charalanda" on casita',
+    );
+    const outside = service({ liveElsewhere: { name: 'svc-charalanda', status: 'idle' } });
+    expect(remoteCanOpen(outside)).toBe(false);
+    expect(remoteRowTitle(outside, 'casita')).toBe(
+      'Service "svc-charalanda" runs outside tmux on casita: nothing to attach to',
+    );
+    // Open in the office already: it can be gone to.
+    expect(remoteCanOpen({ ...outside, agentId: 7 })).toBe(true);
+    // A work session outside tmux still opens (it asks first, then resumes).
+    expect(remoteCanOpen(conversation({ liveElsewhere: {} }))).toBe(true);
   });
 });

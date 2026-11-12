@@ -333,6 +333,17 @@ export const ICONS = {
     '.##..##.',
     '.##..##.',
   ],
+  // A gear: a service on another machine (a remote host's Services).
+  service: [
+    '.#.##.#.',
+    '########',
+    '.##..##.',
+    '###..###',
+    '###..###',
+    '.##..##.',
+    '########',
+    '.#.##.#.',
+  ],
   // A magnifying glass: the lens top-left, the handle out to the corner.
   search: [
     '.####...',

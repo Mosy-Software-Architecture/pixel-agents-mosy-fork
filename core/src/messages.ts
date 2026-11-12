@@ -227,7 +227,10 @@ export interface AgentSessionInfo {
   color?: string;
   agentSetting?: string;
   host?: string;
+  remoteKind?: RemoteKind;
 }
+
+export type RemoteKind = 'work' | 'service';
 
 export interface LayoutLoaded {
   type: 'layoutLoaded';
@@ -504,6 +507,7 @@ export interface Conversation {
   agentId?: number;
   liveElsewhere?: LiveElsewhere;
   remoteStatus?: string;
+  remoteKind?: RemoteKind;
 }
 
 export interface LiveElsewhere {

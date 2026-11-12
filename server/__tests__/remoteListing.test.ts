@@ -1,6 +1,13 @@
+import { execFileSync } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 
-import { parseRemoteListing } from '../src/providers/hook/claude/remoteListing.js';
+import {
+  parseRemoteListing,
+  REMOTE_LISTING_SCRIPT,
+} from '../src/providers/hook/claude/remoteListing.js';
 
 /**
  * What the remote listing script prints, read into the sessions a remote
@@ -15,6 +22,9 @@ const ID = {
   past: '798a28b2-68f4-4389-8418-9feed80362ba',
   untitled: 'dec6d67e-c925-4f47-a6e9-862ce14c4d55',
   print: '04439554-9856-4868-88c0-d1675f3e3f44',
+  watcher: '9d1f2b3c-4d5e-4f60-8a7b-1c2d3e4f5a6b',
+  pastSvc: '2b1c0d9e-8f7a-4b6c-9d5e-3f2a1b0c9d8e',
+  loneSvc: '7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d',
 };
 
 const rec = (record: Record<string, unknown>) => JSON.stringify(record);
@@ -35,8 +45,18 @@ const listing = {
   live: [
     { sessionId: ID.lead, name: 'workspace-f1', status: 'busy', tmux: 'lead-casita:@6.%6' },
     { sessionId: ID.outreach, name: 'mos-884-outreach', status: 'idle', tmux: null },
-    { sessionId: ID.bot, name: 'charalanda-19', status: 'idle', tmux: 'charalanda-bot:@10.%10' },
-    { sessionId: ID.tg, name: 'casita-ha-8b', status: 'idle', tmux: 'claude-tg-ha:@1.%1' },
+    // Services: named svc-<service> by the launcher; tmux keeps its own name.
+    { sessionId: ID.bot, name: 'svc-charalanda', status: 'idle', tmux: 'charalanda-bot:@10.%10' },
+    { sessionId: ID.tg, name: 'svc-casita-ha', status: 'busy', tmux: 'claude-tg-ha:@1.%1' },
+    // A service running outside tmux (its supervisor runs it directly).
+    { sessionId: ID.loneSvc, name: 'svc-axiom-alerts', status: 'idle', tmux: null },
+    // Work whose names have the words the old filter dropped (bot, watch).
+    {
+      sessionId: ID.watcher,
+      name: 'futmondo-bot-watch',
+      status: 'idle',
+      tmux: 'futmondo-agent:@3.%3',
+    },
   ],
   transcripts: [
     // Running, untitled: titled with its registry name.
@@ -50,9 +70,16 @@ const listing = {
         rec({ type: 'agent-color', agentColor: 'Red' }),
       ],
     }),
-    // Bots: by registry name, by tmux session.
+    // Services: by registry name, whatever their transcript's title.
     transcript(ID.bot, { mtime: 9_000, labels: [rec({ type: 'ai-title', aiTitle: 'Fichaje' })] }),
-    transcript(ID.tg, { mtime: 9_000, labels: [rec({ type: 'ai-title', aiTitle: 'HA' })] }),
+    transcript(ID.tg, { mtime: 8_000, labels: [rec({ type: 'ai-title', aiTitle: 'HA' })] }),
+    transcript(ID.loneSvc, { mtime: 7_000 }),
+    transcript(ID.watcher, { mtime: 6_000 }),
+    // A service no longer running: by its transcript's title, and left out.
+    transcript(ID.pastSvc, {
+      mtime: 6_500,
+      labels: [rec({ type: 'custom-title', customTitle: 'svc-charalanda' })],
+    }),
     // Past, titled from its last prompt; past and untitled; a `claude -p` run.
     transcript(ID.past, {
       mtime: 2_000,
@@ -65,15 +92,53 @@ const listing = {
       labels: [rec({ type: 'last-prompt', lastPrompt: 'x' })],
     }),
   ],
-  tmux: ['lead-casita', 'mos-884-outreach', 'charalanda-bot', 'claude-tg-ha', 'dashboard'],
+  tmux: [
+    'lead-casita',
+    'mos-884-outreach',
+    'charalanda-bot',
+    'claude-tg-ha',
+    'futmondo-agent',
+    'dashboard',
+  ],
 };
 
 describe('a remote host listing', () => {
   const sessions = parseRemoteListing(JSON.stringify(listing))!;
   const byId = new Map(sessions.map((s) => [s.sessionId, s]));
 
-  it('lists running and titled past sessions, newest first, and nothing else', () => {
-    expect(sessions.map((s) => s.sessionId)).toEqual([ID.lead, ID.outreach, ID.past]);
+  it('lists running sessions, titled past ones and running services, newest first', () => {
+    expect(sessions.map((s) => s.sessionId)).toEqual([
+      ID.bot,
+      ID.tg,
+      ID.loneSvc,
+      ID.watcher,
+      ID.lead,
+      ID.outreach,
+      ID.past,
+    ]);
+  });
+
+  it('tells services by their svc- registry name, not by words in their names', () => {
+    const services = sessions.filter((s) => s.service).map((s) => s.sessionId);
+    expect(services).toEqual([ID.bot, ID.tg, ID.loneSvc]);
+    expect(byId.get(ID.bot)).toMatchObject({ title: 'Fichaje', tmux: 'charalanda-bot' });
+    expect(byId.get(ID.loneSvc)?.tmux).toBeUndefined();
+    // "bot" and "watch" in a work session's names no longer hide it.
+    expect(byId.get(ID.watcher)).toMatchObject({ tmux: 'futmondo-agent' });
+    expect(byId.get(ID.watcher)?.service).toBeUndefined();
+  });
+
+  it("falls back to the transcript's title for a service with no registry name", () => {
+    const nameless = parseRemoteListing(
+      JSON.stringify({
+        ...listing,
+        live: [{ sessionId: ID.pastSvc, status: 'idle', tmux: 'charalanda-bot:@10.%10' }],
+      }),
+    )!;
+    expect(nameless.find((s) => s.sessionId === ID.pastSvc)).toMatchObject({
+      service: true,
+      title: 'svc-charalanda',
+    });
   });
 
   it('titles a running session with its registry name until the CLI titles it', () => {
@@ -115,5 +180,56 @@ describe('a remote host listing', () => {
       }),
     );
     expect(odd).toEqual([]);
+  });
+});
+
+function hasPython(): boolean {
+  try {
+    execFileSync('python3', ['--version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe.skipIf(!hasPython())('the listing script', () => {
+  it('lists a running session that has not written its transcript yet', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-listing-'));
+    try {
+      fs.mkdirSync(path.join(home, '.claude', 'sessions'), { recursive: true });
+      fs.writeFileSync(
+        path.join(home, '.claude', 'sessions', `${process.pid}.json`),
+        JSON.stringify({
+          pid: process.pid,
+          sessionId: ID.bot,
+          name: 'svc-charalanda',
+          status: 'idle',
+          cwd: '/home/u/charalanda.bot',
+          entrypoint: 'cli',
+          startedAt: 1_234,
+        }),
+      );
+      const out = execFileSync('python3', ['-'], {
+        input: REMOTE_LISTING_SCRIPT,
+        env: { ...process.env, HOME: home },
+      }).toString();
+      expect(parseRemoteListing(out)).toEqual([
+        expect.objectContaining({
+          sessionId: ID.bot,
+          service: true,
+          title: 'svc-charalanda',
+          updatedAt: 1_234,
+          transcript: path.join(
+            home,
+            '.claude',
+            'projects',
+            '-home-u-charalanda-bot',
+            `${ID.bot}.jsonl`,
+          ),
+        }),
+      ]);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 });
