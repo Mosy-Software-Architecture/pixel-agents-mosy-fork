@@ -856,11 +856,10 @@ export const MUSIC_NAME_REROLLS = 8;
 export const MUSIC_STORAGE_KEY = 'pixel-agents.radio';
 /** The album the system's media controls (macOS Now Playing) show for every tune. */
 export const MUSIC_SESSION_ALBUM = 'Pixel Agents';
-/** The near-silent loop that keeps the radio in those controls: Chrome lists only
- *  media longer than 5 s; its level (RMS, dBFS) is far below the music but not zero. */
+/** The silent loop that keeps the radio in those controls: Chrome lists only
+ *  media longer than 5 s. */
 export const MUSIC_SESSION_LOOP_SEC = 6;
 export const MUSIC_SESSION_LOOP_RATE = 8000;
-export const MUSIC_SESSION_LOOP_DBFS = -50;
 /** The artwork they show: the app icon, relative to the page. */
 export const MUSIC_SESSION_ARTWORK = {
   src: 'icons/icon-512.png',

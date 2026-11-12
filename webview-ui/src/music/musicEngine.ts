@@ -27,7 +27,7 @@ import {
   type Song,
   type WaveEvent,
 } from './composer.js';
-import { connectMediaSession, quietLoopWav } from './mediaSession.js';
+import { connectMediaSession, silentLoopWav } from './mediaSession.js';
 import { chooseMood, MOOD_KEYS, type MoodKey, type MoodSetting } from './moods.js';
 import { newSeed } from './rng.js';
 import { parseSongCode } from './songCode.js';
@@ -256,11 +256,11 @@ class OfficeRadio {
     // The system's media controls (macOS Now Playing, Control Center) list a
     // page only while one of its media elements plays content: a file longer
     // than 5 s, not a MediaStream (Chrome treats those as calls). So beside the
-    // mix, an <audio> loops a few seconds of near-silent noise (mediaSession.ts).
+    // mix, an <audio> loops a few seconds of silence (mediaSession.ts).
     this.anchor = document.createElement('audio');
     this.anchor.hidden = true;
     this.anchor.loop = true;
-    this.anchor.src = URL.createObjectURL(new Blob([quietLoopWav()], { type: 'audio/wav' }));
+    this.anchor.src = URL.createObjectURL(new Blob([silentLoopWav()], { type: 'audio/wav' }));
     document.body.append(this.anchor);
     // The visualizer listens to the mix before the volume, so its bars look
     // the same at any volume (and keep moving while muted).

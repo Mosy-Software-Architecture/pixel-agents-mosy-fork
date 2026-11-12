@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { makeSong, type Song } from '../src/music/composer.js';
-import { connectMediaSession, quietLoopWav, type TuneInfo } from '../src/music/mediaSession.js';
+import { connectMediaSession, silentLoopWav, type TuneInfo } from '../src/music/mediaSession.js';
 
 interface FakeState {
   playing: boolean;
@@ -142,13 +142,12 @@ describe('office radio media session', () => {
   });
 });
 
-describe('the near-silent loop behind the media session', () => {
-  const wav = quietLoopWav();
+describe('the silent loop behind the media session', () => {
+  const wav = silentLoopWav();
   const view = new DataView(wav.buffer);
   const text = (at: number, n: number) => String.fromCharCode(...wav.subarray(at, at + n));
   const rate = view.getUint32(24, true);
   const dataBytes = view.getUint32(40, true);
-  const samples = Array.from({ length: dataBytes / 2 }, (_, i) => view.getInt16(44 + i * 2, true));
 
   it('is a mono 16-bit PCM WAV whose sizes add up', () => {
     expect(text(0, 4)).toBe('RIFF');
@@ -163,13 +162,10 @@ describe('the near-silent loop behind the media session', () => {
   });
 
   it('lasts longer than the 5 s Chrome needs to treat it as content', () => {
-    expect(samples.length / rate).toBeGreaterThan(5);
+    expect(dataBytes / 2 / rate).toBeGreaterThan(5);
   });
 
-  it('is quiet, around -50 dBFS, but not digital silence', () => {
-    const rms = Math.sqrt(samples.reduce((sum, v) => sum + v * v, 0) / samples.length) / 32768;
-    const dbfs = 20 * Math.log10(rms);
-    expect(dbfs).toBeGreaterThan(-52);
-    expect(dbfs).toBeLessThan(-48);
+  it('is digital silence: every sample is zero', () => {
+    expect(wav.subarray(44).every((b) => b === 0)).toBe(true);
   });
 });
