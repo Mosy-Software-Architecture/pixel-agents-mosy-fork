@@ -469,6 +469,10 @@ export function useExtensionMessages(
           if (isHeadlessAgent(msg.isExternal as boolean | undefined)) {
             os.setHeadless(id, true);
           }
+          // An adopted session joins at rest (its transcript is read from its
+          // end): idle, not mid-turn, until its activity says otherwise. One
+          // launched here starts working at once.
+          if (msg.isExternal === true) os.setAgentActive(id, false);
         }
         saveAgentSeats(os);
       } else if (msg.type === 'agentClosed') {

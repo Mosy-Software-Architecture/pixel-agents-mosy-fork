@@ -423,6 +423,17 @@ export const ICONS = {
     '.######.',
     '..####..',
   ],
+  // A steaming cup: an idle agent, its turn over and nothing pending.
+  coffee: [
+    '..#..#..',
+    '.#..#...',
+    '........',
+    '######..',
+    '#....###',
+    '#....#.#',
+    '#....###',
+    '.####...',
+  ],
   // A question mark: the agent asked the user something.
   question: [
     '..####..',

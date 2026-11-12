@@ -17,6 +17,7 @@ const STATUS_TO_TOOL: Record<string, string> = {
   'Sending message': 'SendMessage',
   '-> ': 'SendMessage',
   'Waiting for your answer': 'AskUserQuestion',
+  'Waiting for plan approval': 'ExitPlanMode',
   Planning: 'EnterPlanMode',
   'Creating team': 'TeamCreate',
 };

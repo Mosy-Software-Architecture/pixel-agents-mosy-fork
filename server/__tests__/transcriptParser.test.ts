@@ -349,3 +349,69 @@ describe('transcriptParser: teammate spawn results (new-harness implicit teams)'
     expect(agent.isTeamLead).toBeUndefined();
   });
 });
+
+describe('transcriptParser: questions to the user (AskUserQuestion, ExitPlanMode)', () => {
+  let agents: AgentStateStore;
+  let agent: AgentState;
+  let messages: Array<Record<string, unknown>>;
+  const waitingTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  const permissionTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  const line = (l: string) => processTranscriptLine(1, l, agents, waitingTimers, permissionTimers);
+  const statuses = () =>
+    messages
+      .filter((m) => m.type === 'agentStatus')
+      .map((m) => (m.awaitingInput ? `${m.status}:input` : m.status));
+
+  beforeEach(() => {
+    setHookProvider(claudeProvider);
+    agents = new AgentStateStore();
+    agent = createTestAgent();
+    agents.set(1, agent);
+    messages = [];
+    agents.on('broadcast', (msg) => {
+      messages.push(msg as Record<string, unknown>);
+    });
+    vi.useFakeTimers();
+    return () => {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    };
+  });
+
+  for (const toolName of ['AskUserQuestion', 'ExitPlanMode']) {
+    it(`a pending ${toolName} call waits for input, with no permission hand`, () => {
+      line(agentToolUseRecord('toolu_q', toolName, {}));
+
+      expect(agent.isWaiting).toBe(true);
+      expect(statuses()).toEqual(['waiting:input']);
+      // The tool row comes first, so the waiting status is the latest word.
+      const order = messages.map((m) => m.type);
+      expect(order.indexOf('agentToolStart')).toBeLessThan(order.indexOf('agentStatus'));
+      vi.advanceTimersByTime(30_000);
+      expect(messages.some((m) => m.type === 'agentToolPermission')).toBe(false);
+    });
+  }
+
+  it('the answer (its tool_result) puts the agent back to work', () => {
+    line(agentToolUseRecord('toolu_q', 'AskUserQuestion', {}));
+    line(toolResultRecord('toolu_q', 'User answered: yes'));
+
+    expect(agent.isWaiting).toBe(false);
+    expect(statuses()).toEqual(['waiting:input', 'active']);
+  });
+
+  it('with hooks, the record leaves the hook-driven question alone', () => {
+    agent.hookDelivered = true;
+    agent.isWaiting = true; // PreToolUse(AskUserQuestion) already said so
+    line(agentToolUseRecord('toolu_q', 'AskUserQuestion', {}));
+    line(toolResultRecord('toolu_q', 'User answered: yes'));
+
+    expect(statuses()).toEqual([]);
+  });
+
+  it('an ordinary tool is work, not a question', () => {
+    line(agentToolUseRecord('toolu_r', 'Read', { file_path: '/tmp/x' }));
+    expect(statuses()).toEqual(['active']);
+    expect(agent.isWaiting).toBe(false);
+  });
+});

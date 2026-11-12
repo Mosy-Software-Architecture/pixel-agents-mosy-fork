@@ -79,6 +79,8 @@ export function formatToolStatus(toolName: string, input?: unknown): string {
     }
     case 'AskUserQuestion':
       return 'Waiting for your answer';
+    case 'ExitPlanMode':
+      return 'Waiting for plan approval';
     case 'EnterPlanMode':
       return 'Planning';
     case 'NotebookEdit':
@@ -248,9 +250,11 @@ function normalizeHookEvent(
         return { sessionId, event: { kind: 'permissionRequest' } };
       }
       if (notificationType === 'idle_prompt') {
-        // idle_prompt = Claude went idle waiting on the user, not just a finished
-        // turn. awaitingInput drives the "Waiting for input" label (vs "Done" for Stop).
-        return { sessionId, event: { kind: 'turnEnd', awaitingInput: true } };
+        // Sent about a minute after ANY turn left without a new prompt (no
+        // dialog on screen), so it says nothing a Stop didn't: only a turn end
+        // nothing else reported. An agent that asked something is waiting on
+        // its AskUserQuestion / ExitPlanMode call (inputRequestTools).
+        return { sessionId, event: { kind: 'turnEnd', idle: true } };
       }
       return null;
     }
@@ -355,7 +359,8 @@ export const claudeProvider: HookProvider = {
   consentDisclosure,
 
   formatToolStatus,
-  permissionExemptTools: new Set(['Task', 'Agent', 'AskUserQuestion']),
+  permissionExemptTools: new Set(['Task', 'Agent', 'AskUserQuestion', 'ExitPlanMode']),
+  inputRequestTools: new Set(['AskUserQuestion', 'ExitPlanMode']),
   subagentToolNames: CLAUDE_SUBAGENT_TOOLS,
   readingTools: new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch']),
   terminalNamePrefix: CLAUDE_TERMINAL_NAME_PREFIX,

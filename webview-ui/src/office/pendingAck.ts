@@ -1,11 +1,13 @@
 /**
  * Agents that rang for the user and haven't been looked at yet: a turn that
- * ended (`agentStatus` waiting: Stop, or idle waiting on input) or a
- * permission prompt — every time the chime sounds. While pending, the
- * character keeps its bubble (ToolOverlay) and the agent's card a ring
- * (AgentCard), so after the chime the office still says who rang. Cleared
- * when the user acknowledges it (clicks the character or the card, or its
- * terminal is shown) or when the agent moves on (a tool or a turn starts).
+ * ended (`agentStatus` waiting: Stop), a question the agent asked
+ * (`awaitingInput`: AskUserQuestion, ExitPlanMode) or a permission prompt —
+ * every time the chime sounds. While pending, the character keeps its bubble
+ * (ToolOverlay) and the agent's card a ring (AgentCard), so after the chime
+ * the office still says who rang. Cleared when the user acknowledges it
+ * (clicks the character or the card, its terminal is shown, or it rang while
+ * its terminal was already in front: office/autoAck.ts) or when the agent
+ * moves on (a tool or a turn starts, the question is answered).
  */
 
 /** What the agent is waiting on: the bubble kept over its character. */

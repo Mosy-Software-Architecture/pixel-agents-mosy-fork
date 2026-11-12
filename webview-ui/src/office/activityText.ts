@@ -5,6 +5,7 @@
  * pure so it runs on the Node test runner.
  */
 
+import { extractToolName } from './toolUtils.js';
 import type { Character, ToolActivity } from './types.js';
 
 /** The bubble an agent shows: the pending one (office/pendingAck.ts) wins
@@ -12,8 +13,9 @@ import type { Character, ToolActivity } from './types.js';
 export type ActivityBubble = 'permission' | 'waiting' | null;
 
 export const NEEDS_APPROVAL_TEXT = 'Needs approval';
-/** A turn that ended waiting on the user (Notification(idle_prompt)). A
- *  finished turn (Stop) has no text of its own: the checkmark says it. */
+/** The agent asked the user something (AskUserQuestion, ExitPlanMode) and
+ *  waits for the answer. A finished turn (Stop) has no text of its own: the
+ *  checkmark says it. */
 export const WAITING_INPUT_TEXT = 'Waiting for input';
 export const IDLE_TEXT = 'Idle';
 
@@ -48,6 +50,19 @@ export function runningTool(tools: readonly ToolActivity[] | undefined): ToolAct
   return tools ? [...tools].reverse().find((t) => !t.done) : undefined;
 }
 
+/** Tools that ask the user something: once answered, the agent is thinking
+ *  about the answer, not still asking. */
+const QUESTION_TOOLS: ReadonlySet<string> = new Set(['AskUserQuestion', 'ExitPlanMode']);
+
+/** The turn's latest tool, running or done (the tools are cleared when a
+ *  turn ends or starts, so during a turn it is what the agent did last).
+ *  None after an answered question. */
+export function lastTool(tools: readonly ToolActivity[] | undefined): ToolActivity | undefined {
+  const last = tools && tools.length > 0 ? tools[tools.length - 1] : undefined;
+  if (last?.done && QUESTION_TOOLS.has(extractToolName(last.status) ?? '')) return undefined;
+  return last;
+}
+
 /** A short human-readable activity line. */
 export function activityText({ tools, isActive, bubble, awaitingInput }: ActivityState): string {
   if (bubble === 'permission') return NEEDS_APPROVAL_TEXT;
@@ -55,7 +70,8 @@ export function activityText({ tools, isActive, bubble, awaitingInput }: Activit
 
   const active = runningTool(tools);
   if (active) return active.permissionWait ? NEEDS_APPROVAL_TEXT : active.status;
-  // Every tool done but the turn goes on: keep the last tool's line.
-  if (isActive && tools && tools.length > 0) return tools[tools.length - 1].status;
-  return IDLE_TEXT;
+  // Every tool done but the turn goes on: keep the last tool's line (the
+  // icon keeps its icon, office/activityIcon.ts).
+  const last = isActive ? lastTool(tools) : undefined;
+  return last ? last.status : IDLE_TEXT;
 }

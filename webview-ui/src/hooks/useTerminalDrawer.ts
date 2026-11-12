@@ -4,8 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentActivity, AgentAppearance, TabStatus } from '../components/AgentCard.js';
 import { TERMINAL_DRAWER_DEFAULT_WIDTH_PX } from '../constants.js';
 import { activityStateOf, activityText } from '../office/activityText.js';
+import { autoAckTarget, createAutoAckTimer } from '../office/autoAck.js';
 import type { OfficeState } from '../office/engine/officeState.js';
-import { pendingAckOf } from '../office/pendingAck.js';
+import { pendingAckOf, subscribePendingAck } from '../office/pendingAck.js';
 import type { ToolActivity } from '../office/types.js';
 import type { TerminalConnectionStatus } from '../terminal/terminalClient.js';
 import { clampDrawerWidth } from './drawerWidth.js';
@@ -136,6 +137,37 @@ export function useTerminalDrawer({
     if (isOpen && shownAgentId !== null) getOfficeState().dismissBubble(shownAgentId);
   }, [isOpen, shownAgentId, getOfficeState]);
 
+  // So is ringing while its terminal is already in front: after a short grace
+  // (the chime, one flash of the icon) the ring acknowledges itself, and does
+  // again when the window comes back to the front on that terminal
+  // (office/autoAck.ts).
+  useEffect(() => {
+    const timer = createAutoAckTimer((id) => getOfficeState().dismissBubble(id));
+    const check = () =>
+      timer.sync(
+        autoAckTarget(
+          {
+            shownAgentId: isOpen ? shownAgentId : null,
+            visible: document.visibilityState === 'visible',
+            focused: document.hasFocus(),
+          },
+          (id) => pendingAckOf(id) !== undefined,
+        ),
+      );
+    check();
+    const unsubscribe = subscribePendingAck(check);
+    window.addEventListener('focus', check);
+    window.addEventListener('blur', check);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', check);
+      window.removeEventListener('blur', check);
+      document.removeEventListener('visibilitychange', check);
+      timer.dispose();
+    };
+  }, [isOpen, shownAgentId, getOfficeState]);
+
   const reveal = useCallback(
     (agentId: number) => {
       if (!terminalAgentIds.includes(agentId)) return;
@@ -194,19 +226,21 @@ export function useTerminalDrawer({
 
   // Activity for the tab status dot (green idle / blue working / yellow needs
   // attention). null until the agent's first activity, so the dot stays empty.
-  // Yellow is a permission prompt only: Claude Code's idle_prompt (a finished
-  // turn left unanswered for a minute) is still green, or every idle agent
-  // would turn yellow a minute after it finished.
+  // Yellow is a permission prompt or a question the agent asked (its
+  // AskUserQuestion / ExitPlanMode row is still running, so it comes first);
+  // a finished turn is green however long it sits.
   const getActivity = useCallback(
     (id: number): AgentActivity | null => {
       if (!agentSeenActivity[id]) return null;
       const tools = agentTools[id];
       if (tools?.some((t) => t.permissionWait && !t.done)) return 'attention';
+      const asksUser = getOfficeState().characters.get(id)?.waitingAwaitingInput === true;
+      if (agentStatuses[id] === 'waiting' && asksUser) return 'attention';
       if (tools?.some((t) => !t.done)) return 'working';
       if (agentStatuses[id] === 'waiting') return 'idle';
       return 'working';
     },
-    [agentSeenActivity, agentTools, agentStatuses],
+    [agentSeenActivity, agentTools, agentStatuses, getOfficeState],
   );
 
   const activityFor = useCallback(

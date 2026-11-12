@@ -345,9 +345,11 @@ export class HookEventHandler {
         return this.handlePermissionRequest(agent, agentId);
       case 'turnEnd':
         // Handles Stop AND Notification(idle_prompt) -- both normalize to turnEnd.
-        // awaitingInput discriminates them: idle_prompt sets it (-> "Waiting for
-        // input"), Stop leaves it absent (-> "Done").
-        return this.handleStop(agent, agentId, normEvent.awaitingInput === true);
+        // idle_prompt comes a minute after any unanswered turn: it only ends a
+        // turn nothing else ended, and never means "waiting for input" (that
+        // is an AskUserQuestion / ExitPlanMode call, see handlePreToolUse).
+        if (normEvent.idle && agent.isWaiting) return;
+        return this.handleStop(agent, agentId);
       case 'subagentTurnEnd':
         // Handles TeammateIdle AND TaskCompleted -- both normalize here. The normalized
         // `reason` field discriminates; the team-provider's extractTeammateNameFromEvent(raw)
@@ -432,9 +434,11 @@ export class HookEventHandler {
     // tool display on the lead. Both lead and teammate tools display via JSONL polling.
     if (hasInlineTeammates(agentId, this.agents)) return;
 
-    // Cancel waiting, mark active
+    // Cancel waiting, mark active (or, for a question to the user, waiting
+    // on its answer: the turn goes on, the agent doesn't).
+    const asksUser = this.provider.inputRequestTools?.has(toolName) ?? false;
     cancelWaitingTimer(agentId, this.waitingTimers);
-    agent.isWaiting = false;
+    agent.isWaiting = asksUser;
     agent.turnActive = true;
     agent.permissionSent = false;
     agent.hadToolsInTurn = true;
@@ -453,11 +457,11 @@ export class HookEventHandler {
         toolName,
       });
     }
-    this.agents.broadcast({
-      type: 'agentStatus',
-      id: agentId,
-      status: 'active',
-    });
+    this.agents.broadcast(
+      asksUser
+        ? { type: 'agentStatus', id: agentId, status: 'waiting', awaitingInput: true }
+        : { type: 'agentStatus', id: agentId, status: 'active' },
+    );
   }
 
   /**
@@ -466,6 +470,11 @@ export class HookEventHandler {
    * to serve as a confirmation event for pending external sessions.
    */
   private handlePostToolUse(agent: AgentState, agentId: number): void {
+    // The user answered the agent's question: it works again.
+    if (this.asksUser(agent) && agent.isWaiting && !hasInlineTeammates(agentId, this.agents)) {
+      agent.isWaiting = false;
+      this.agents.broadcast({ type: 'agentStatus', id: agentId, status: 'active' });
+    }
     if (agent.currentHookToolId) {
       // Suppress tool display when lead has inline teammates (see handlePreToolUse)
       if (!hasInlineTeammates(agentId, this.agents)) {
@@ -633,6 +642,9 @@ export class HookEventHandler {
     }
 
     cancelPermissionTimer(agentId, this.permissionTimers);
+    // A question to the user arrives as a permission request too (its dialog
+    // is the approval card): the agent already shows it waits for input.
+    if (this.asksUser(agent)) return;
     agent.permissionSent = true;
     this.agents.broadcast({
       type: 'agentToolPermission',
@@ -649,8 +661,15 @@ export class HookEventHandler {
   }
 
   /** Handle Stop: Claude finished responding, mark agent as waiting. */
-  private handleStop(agent: AgentState, agentId: number, awaitingInput = false): void {
-    this.markAgentWaiting(agent, agentId, awaitingInput);
+  private handleStop(agent: AgentState, agentId: number): void {
+    this.markAgentWaiting(agent, agentId);
+  }
+
+  /** The agent's current hook tool asks the user something (AskUserQuestion,
+   *  ExitPlanMode): it waits for an answer, not for an approval. */
+  private asksUser(agent: AgentState): boolean {
+    const toolName = agent.currentHookToolName;
+    return !!toolName && (this.provider.inputRequestTools?.has(toolName) ?? false);
   }
 
   /**
@@ -732,7 +751,7 @@ export class HookEventHandler {
    * agents), cancels timers, and notifies the webview. Same logic as the turn_duration
    * handler in transcriptParser.ts.
    */
-  private markAgentWaiting(agent: AgentState, agentId: number, awaitingInput = false): void {
+  private markAgentWaiting(agent: AgentState, agentId: number): void {
     cancelWaitingTimer(agentId, this.waitingTimers);
     cancelPermissionTimer(agentId, this.permissionTimers);
 
@@ -786,7 +805,9 @@ export class HookEventHandler {
       type: 'agentStatus',
       id: agentId,
       status: 'waiting',
-      awaitingInput,
+      // A finished turn ("Done"); waiting for input is a question the agent
+      // asked (handlePreToolUse).
+      awaitingInput: false,
     });
   }
 

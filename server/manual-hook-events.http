@@ -78,7 +78,24 @@ Content-Type: application/json
 }
 
 ###
-# Mark the agent waiting via notification
+# Ask the user something: the agent waits for input (question icon), and a
+# PermissionRequest for it raises no hand. PostToolUse (the answer) resumes it.
+POST http://{{host}}:{{port}}/api/hooks/{{provider}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "session_id": "{{sessionId}}",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": []
+  }
+}
+
+###
+# Late idle report (Claude Code sends it a minute after any unanswered turn):
+# ends a turn nothing else ended, as Done; ignored when the agent already waits
 POST http://{{host}}:{{port}}/api/hooks/{{provider}}
 Authorization: Bearer {{token}}
 Content-Type: application/json

@@ -26,11 +26,12 @@ export type AgentEvent =
   | { kind: 'toolEnd'; toolId: string }
   | {
       kind: 'turnEnd';
-      /** True when the turn ended because the agent went idle waiting on the
-       *  user (Claude's Notification(idle_prompt)) rather than simply finishing
-       *  its response (Stop). Drives the "Waiting for input" vs "Done" label.
-       *  Absent/false = the agent finished its turn (Done). */
-      awaitingInput?: boolean;
+      /** True for a late idle report rather than the turn end itself
+       *  (Claude's Notification(idle_prompt), sent about a minute after ANY
+       *  turn that got no new prompt). It ends a turn nothing else ended and
+       *  is ignored otherwise: an agent waits for input only while it asks
+       *  something (`inputRequestTools`), never because it went quiet. */
+      idle?: boolean;
     }
   | {
       kind: 'subagentStart';
@@ -206,6 +207,11 @@ export interface HookProvider {
   formatToolStatus(toolName: string, input?: unknown): string;
   /** Tools that don't trigger permission timers */
   readonly permissionExemptTools: ReadonlySet<string>;
+  /** Tools whose call asks the user something and waits for the answer
+   *  (Claude: AskUserQuestion, ExitPlanMode). While one runs the agent is
+   *  waiting for input, not working, and a permission request for it is the
+   *  question itself, not an approval. Also listed in permissionExemptTools. */
+  readonly inputRequestTools?: ReadonlySet<string>;
   /** Tools that spawn sub-agent characters */
   readonly subagentToolNames: ReadonlySet<string>;
   /** Tools that should show the "reading" character animation instead of "typing".

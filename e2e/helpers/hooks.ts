@@ -227,6 +227,9 @@ export function notificationPermissionPrompt(sessionId: string): HookEventPayloa
   };
 }
 
+/** Notification(idle_prompt): Claude Code sends it about a minute after any
+ *  turn left without a new prompt. It ends a turn nothing else ended (Done),
+ *  never "Waiting for input" (that is an AskUserQuestion / ExitPlanMode call). */
 export function idlePrompt(sessionId: string): HookEventPayload {
   return {
     session_id: sessionId,
@@ -235,8 +238,8 @@ export function idlePrompt(sessionId: string): HookEventPayload {
   };
 }
 
-/** Stop = the agent finished its turn. Normalizes to turnEnd (no awaitingInput),
- *  surfaced as the "Done" label (vs idlePrompt's "Waiting for input"). */
+/** Stop = the agent finished its turn. Normalizes to turnEnd, surfaced as the
+ *  "Done" checkmark. */
 export function stop(sessionId: string): HookEventPayload {
   return {
     session_id: sessionId,

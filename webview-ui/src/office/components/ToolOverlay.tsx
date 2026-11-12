@@ -19,7 +19,7 @@ import {
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import { useShowDirectoryNames } from '../../hooks/useShowDirectoryNames.js';
-import { activityIcon, STICKY_ACTIVITY_ICONS } from '../activityIcon.js';
+import { activityIcon, IDLE_ICON, STICKY_ACTIVITY_ICONS } from '../activityIcon.js';
 import {
   activityStateOf,
   activityText,
@@ -151,17 +151,20 @@ export function ToolOverlay({
         // (office/pendingAck.ts): the hand, or the checkmark of its finished
         // turn, at full strength until the user looks.
         const pending = pendingAckOf(id);
-        const state = activityStateOf(
-          ch,
-          sub ? subagentTools[sub.parentAgentId]?.[sub.parentToolId] : agentTools[id],
-          pending,
-        );
+        const tools = sub ? subagentTools[sub.parentAgentId]?.[sub.parentToolId] : agentTools[id];
+        const ownState = activityStateOf(ch, tools, pending);
+        // A sub-agent stands idle in the gaps between its tools (every row
+        // done, useExtensionMessages): while it has any it is at work, and
+        // keeps its last tool's icon like its lead does.
+        const state = isSub && tools?.length ? { ...ownState, isActive: true } : ownState;
         const icon = activityIcon(state);
         // The icon shows for the hovered or selected character, for every one
-        // with Always Show on, and always while it waits on the user.
+        // with Always Show on, and always while it waits on the user. The
+        // idle cup only with Always Show on.
         const showIcon =
-          icon !== null &&
-          (alwaysShowOverlay || isSelected || isHovered || STICKY_ACTIVITY_ICONS.has(icon));
+          icon === IDLE_ICON
+            ? alwaysShowOverlay
+            : alwaysShowOverlay || isSelected || isHovered || STICKY_ACTIVITY_ICONS.has(icon);
         // The label element e2e reads: where the old text label used to be
         // (Always Show on, or hovered/selected).
         const labelShown = alwaysShowOverlay || isSelected || isHovered;

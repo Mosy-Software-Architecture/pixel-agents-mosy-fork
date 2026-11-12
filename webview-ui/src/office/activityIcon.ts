@@ -6,7 +6,7 @@
 
 import type { PixelIconName } from '../components/ui/pixelIcons.js';
 import type { ActivityState } from './activityText.js';
-import { runningTool } from './activityText.js';
+import { lastTool, runningTool } from './activityText.js';
 import { extractToolName } from './toolUtils.js';
 
 /** The icon a tool shows while it runs, by tool name. */
@@ -27,6 +27,7 @@ const TOOL_ICONS: Record<string, PixelIconName> = {
   Task: 'branch',
   TeamCreate: 'branch',
   AskUserQuestion: 'question',
+  ExitPlanMode: 'question',
 };
 
 /** The icon for a running tool, from its status line: its own, the gear for
@@ -47,17 +48,25 @@ export const STICKY_ACTIVITY_ICONS: ReadonlySet<PixelIconName> = new Set<PixelIc
   'question',
 ]);
 
-/** The icon over a character, or null when it has nothing to say (idle). */
+/** An idle agent's icon: shown only with Always Show Activity Icons on, so
+ *  going from idle to work is a visible change (the cup, then a tool). */
+export const IDLE_ICON: PixelIconName = 'coffee';
+
+/** The icon over a character. During a turn it is the running tool's, else
+ *  the last tool's until the next one starts (the gaps between tools are
+ *  short and would otherwise flash the hourglass); the hourglass only before
+ *  the turn's first tool (thinking or writing). Idle: the cup. */
 export function activityIcon({
   tools,
   isActive,
   bubble,
   awaitingInput,
-}: ActivityState): PixelIconName | null {
+}: ActivityState): PixelIconName {
   if (bubble === 'permission') return 'hand';
   if (bubble === 'waiting') return awaitingInput ? 'question' : 'check';
   const active = runningTool(tools);
   if (active) return active.permissionWait ? 'hand' : toolIcon(active.status);
-  // A turn in progress with no tool running: thinking or writing.
-  return isActive ? 'hourglass' : null;
+  if (!isActive) return IDLE_ICON;
+  const last = lastTool(tools);
+  return last ? toolIcon(last.status) : 'hourglass';
 }

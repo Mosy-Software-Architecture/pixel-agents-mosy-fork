@@ -28,6 +28,11 @@ function exemptTools(): ReadonlySet<string> {
   return hookProvider?.permissionExemptTools ?? EMPTY_EXEMPT_TOOLS;
 }
 
+/** Whether the tool asks the user something and waits for the answer. */
+function isInputRequestTool(toolName: string | null | undefined): boolean {
+  return !!toolName && (hookProvider?.inputRequestTools?.has(toolName) ?? false);
+}
+
 /** Whether the given tool name spawns a sub-agent according to the active provider. */
 function isSubagentTool(toolName: string | null | undefined): boolean {
   if (!toolName || !hookProvider) return false;
@@ -181,11 +186,18 @@ export function processTranscriptLine(
       const hasToolUse = blocks.some((b) => b.type === 'tool_use');
 
       if (hasToolUse) {
+        // A question to the user (AskUserQuestion, ExitPlanMode): the agent
+        // waits for the answer instead of working. With hooks, PreToolUse
+        // already said so; an 'active' here would take it back.
+        const asksUser = blocks.some((b) => b.type === 'tool_use' && isInputRequestTool(b.name));
+        const jsonlDrivesTools = !agent.hookDelivered || hasInlineTeammates(agentId, agents);
         cancelWaitingTimer(agentId, waitingTimers);
-        agent.isWaiting = false;
         agent.turnActive = true;
         agent.hadToolsInTurn = true;
-        agents.broadcast({ type: 'agentStatus', id: agentId, status: 'active' });
+        if (!asksUser) {
+          agent.isWaiting = false;
+          agents.broadcast({ type: 'agentStatus', id: agentId, status: 'active' });
+        }
         let hasNonExemptTool = false;
         for (const block of blocks) {
           if (block.type === 'tool_use' && block.id) {
@@ -270,6 +282,15 @@ export function processTranscriptLine(
         if (hasNonExemptTool && !agent.hookDelivered && !agent.leadAgentId) {
           startPermissionTimer(agentId, agents, permissionTimers, exemptTools());
         }
+        if (asksUser && jsonlDrivesTools) {
+          agent.isWaiting = true;
+          agents.broadcast({
+            type: 'agentStatus',
+            id: agentId,
+            status: 'waiting',
+            awaitingInput: true,
+          });
+        }
       } else if (blocks.some((b) => b.type === 'text') && !agent.hadToolsInTurn) {
         // Text-only response in a turn that hasn't used any tools.
         // turn_duration handles tool-using turns reliably but is never
@@ -302,6 +323,17 @@ export function processTranscriptLine(
             if (block.type === 'tool_result' && block.tool_use_id) {
               const completedToolId = block.tool_use_id;
               const completedToolName = agent.activeToolNames.get(completedToolId);
+
+              // The user answered the agent's question: it works again. With
+              // hooks, PostToolUse already said so.
+              if (
+                isInputRequestTool(completedToolName) &&
+                agent.isWaiting &&
+                (!agent.hookDelivered || hasInlineTeammates(agentId, agents))
+              ) {
+                agent.isWaiting = false;
+                agents.broadcast({ type: 'agentStatus', id: agentId, status: 'active' });
+              }
 
               // Teammate spawn result (newer harnesses: every Agent spawn is a
               // background teammate of an implicit team; the lead's own records

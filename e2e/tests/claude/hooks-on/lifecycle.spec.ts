@@ -1082,10 +1082,10 @@ test.describe('Hooks ON / lifecycle', () => {
       if (w.__pixelAgentsTestHooks) w.__pixelAgentsTestHooks.playedSounds = [];
     });
 
-    narrator.step('sending an idle_prompt to flip the agent to waiting');
+    narrator.step('sending an idle_prompt to end the turn (a late turn end, never a question)');
     await sendHookEvent(serverConfig, idlePrompt(sessionId));
-    await expectOverlayVisible(frame, 'Waiting for input');
-    narrator.check('overlay shows "Waiting for input"');
+    await expectOverlayVisible(frame, 'Idle');
+    narrator.check('overlay shows "Idle" (the finished turn), not "Waiting for input"');
 
     narrator.step(
       'checking a "done" chime was dispatched (test hook — the chime is not audible in the video)',
