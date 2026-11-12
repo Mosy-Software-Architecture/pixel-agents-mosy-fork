@@ -119,15 +119,12 @@ describe('claudeProvider', () => {
       expect(result?.event.kind).toBe('toolEnd');
     });
 
-    it('normalizes Stop to turnEnd without awaitingInput (Done, not waiting)', () => {
+    it('normalizes Stop to a plain turnEnd (Done, not idle)', () => {
       const result = claudeProvider.normalizeHookEvent({
         hook_event_name: 'Stop',
         session_id: 'sess-1',
       });
-      expect(result?.event.kind).toBe('turnEnd');
-      if (result?.event.kind === 'turnEnd') {
-        expect(result.event.awaitingInput).toBeFalsy();
-      }
+      expect(result?.event).toEqual({ kind: 'turnEnd' });
     });
 
     it('ignores UserPromptSubmit (no normalized kind yet)', () => {
@@ -189,16 +186,21 @@ describe('claudeProvider', () => {
       expect(result?.event.kind).toBe('permissionRequest');
     });
 
-    it('normalizes Notification(idle_prompt) to turnEnd with awaitingInput=true', () => {
+    it('normalizes Notification(idle_prompt) to an idle turnEnd, not to waiting for input', () => {
       const result = claudeProvider.normalizeHookEvent({
         hook_event_name: 'Notification',
         session_id: 'sess-1',
         notification_type: 'idle_prompt',
       });
-      expect(result?.event.kind).toBe('turnEnd');
-      if (result?.event.kind === 'turnEnd') {
-        expect(result.event.awaitingInput).toBe(true);
+      expect(result?.event).toEqual({ kind: 'turnEnd', idle: true });
+    });
+
+    it('lists AskUserQuestion and ExitPlanMode as input requests, never needing approval', () => {
+      for (const tool of ['AskUserQuestion', 'ExitPlanMode']) {
+        expect(claudeProvider.inputRequestTools?.has(tool)).toBe(true);
+        expect(claudeProvider.permissionExemptTools.has(tool)).toBe(true);
       }
+      expect(claudeProvider.inputRequestTools?.has('Bash')).toBe(false);
     });
 
     it('returns null for Notification with unknown type', () => {

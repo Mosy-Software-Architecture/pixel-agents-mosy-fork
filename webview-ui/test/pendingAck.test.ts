@@ -23,7 +23,7 @@ function floor(): OfficeLayout {
 }
 
 describe('pendingAckChange', () => {
-  it('starts a pending ack on every live turn end (Stop or waiting on input) and on a permission prompt', () => {
+  it('starts a pending ack on every live turn end (Stop or a question to the user) and on a permission prompt', () => {
     expect(pendingAckChange({ type: 'agentStatus', status: 'waiting', awaitingInput: true })).toBe(
       'waiting',
     );

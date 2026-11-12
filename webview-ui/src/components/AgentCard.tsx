@@ -118,10 +118,12 @@ export function AgentCard({
           repeat={appearance.repeat}
           cropTop={CARD_MUGSHOT_CROP_TOP_ROW}
         />
-        {/* A ring round the mug shot until the user acknowledges the agent. */}
+        {/* A ring round the mug shot until the user acknowledges the agent,
+            drawn over the context bar along the card's foot, which would
+            otherwise hide its bottom edge. */}
         {pending && (
           <span
-            className="absolute inset-0 pointer-events-none border-2 border-status-permission pending-ack-pulse"
+            className="absolute inset-0 z-10 pointer-events-none border-2 border-status-permission pending-ack-pulse"
             data-testid="card-pending-ack"
             data-pending={pending}
           />

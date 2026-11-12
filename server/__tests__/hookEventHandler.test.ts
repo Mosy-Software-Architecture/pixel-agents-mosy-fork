@@ -196,7 +196,7 @@ describe('HookEventHandler', () => {
     expect(agent.permissionSent).toBe(true);
   });
 
-  it('Notification idle_prompt marks agent waiting', () => {
+  it('Notification idle_prompt ends a turn nothing ended, as Done (no awaitingInput)', () => {
     const agent = createTestAgent({ id: 1 });
     agents.set(1, agent);
     handler.registerAgent('sess-1', 1);
@@ -212,8 +212,90 @@ describe('HookEventHandler', () => {
       (m) => m.type === 'agentStatus' && m.status === 'waiting',
     );
     expect(msg).toBeTruthy();
-    // idle_prompt = waiting on the user -> awaitingInput true ("Waiting for input")
-    expect(msg?.awaitingInput).toBe(true);
+    // idle_prompt follows ANY unanswered turn a minute later: never a question.
+    expect(msg?.awaitingInput).toBe(false);
+  });
+
+  it('Notification idle_prompt after a Stop changes nothing (no second ring)', () => {
+    const agent = createTestAgent({ id: 1 });
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+
+    handler.handleEvent('claude', { hook_event_name: 'Stop', session_id: 'sess-1' });
+    mockWebview.messages.length = 0;
+    handler.handleEvent('claude', {
+      hook_event_name: 'Notification',
+      session_id: 'sess-1',
+      notification_type: 'idle_prompt',
+    });
+
+    expect(mockWebview.messages).toEqual([]);
+  });
+
+  // ── Questions to the user (AskUserQuestion, ExitPlanMode) ────
+
+  for (const toolName of ['AskUserQuestion', 'ExitPlanMode']) {
+    it(`PreToolUse ${toolName} marks the agent waiting for input`, () => {
+      const agent = createTestAgent({ id: 1 });
+      agents.set(1, agent);
+      handler.registerAgent('sess-1', 1);
+
+      handler.handleEvent('claude', {
+        hook_event_name: 'PreToolUse',
+        session_id: 'sess-1',
+        tool_name: toolName,
+        tool_input: {},
+      });
+
+      expect(agent.isWaiting).toBe(true);
+      const types = mockWebview.messages.map((m) => `${m.type}:${m.toolName ?? m.status}`);
+      expect(types).toEqual([`agentToolStart:${toolName}`, 'agentStatus:waiting']);
+      expect(mockWebview.messages[1].awaitingInput).toBe(true);
+    });
+  }
+
+  it('a permission request for a question raises no hand; PostToolUse resumes work', () => {
+    const agent = createTestAgent({ id: 1 });
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'PreToolUse',
+      session_id: 'sess-1',
+      tool_name: 'AskUserQuestion',
+      tool_input: {},
+    });
+    handler.handleEvent('claude', { hook_event_name: 'PermissionRequest', session_id: 'sess-1' });
+    handler.handleEvent('claude', {
+      hook_event_name: 'Notification',
+      session_id: 'sess-1',
+      notification_type: 'permission_prompt',
+    });
+    expect(mockWebview.messages.some((m) => m.type === 'agentToolPermission')).toBe(false);
+    expect(agent.permissionSent).toBe(false);
+
+    mockWebview.messages.length = 0;
+    handler.handleEvent('claude', { hook_event_name: 'PostToolUse', session_id: 'sess-1' });
+    expect(agent.isWaiting).toBe(false);
+    expect(mockWebview.messages.map((m) => `${m.type}:${m.status ?? ''}`)).toEqual([
+      'agentStatus:active',
+      'agentToolDone:',
+    ]);
+  });
+
+  it('a permission request for an ordinary tool still raises the hand', () => {
+    const agent = createTestAgent({ id: 1 });
+    agents.set(1, agent);
+    handler.registerAgent('sess-1', 1);
+
+    handler.handleEvent('claude', {
+      hook_event_name: 'PreToolUse',
+      session_id: 'sess-1',
+      tool_name: 'Bash',
+      tool_input: { command: 'rm -rf build' },
+    });
+    handler.handleEvent('claude', { hook_event_name: 'PermissionRequest', session_id: 'sess-1' });
+    expect(mockWebview.messages.some((m) => m.type === 'agentToolPermission')).toBe(true);
   });
 
   // ── Stop ────────────────────────────────────────────────────

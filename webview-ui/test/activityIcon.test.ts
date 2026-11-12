@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { ICONS } from '../src/components/ui/pixelIcons.js';
-import { activityIcon, STICKY_ACTIVITY_ICONS, toolIcon } from '../src/office/activityIcon.js';
+import {
+  activityIcon,
+  IDLE_ICON,
+  STICKY_ACTIVITY_ICONS,
+  toolIcon,
+} from '../src/office/activityIcon.js';
 import type { ActivityState } from '../src/office/activityText.js';
 import { extractToolName } from '../src/office/toolUtils.js';
 import type { ToolActivity } from '../src/office/types.js';
@@ -38,6 +43,7 @@ describe('extractToolName', () => {
     ['Sending message', 'SendMessage'],
     ['-> lead', 'SendMessage'],
     ['Waiting for your answer', 'AskUserQuestion'],
+    ['Waiting for plan approval', 'ExitPlanMode'],
     ['Using ToolSearch', 'ToolSearch'],
     ['Using mcp__linear__get_issue', 'mcp__linear__get_issue'],
   ])('%s -> %s', (status, name) => {
@@ -79,18 +85,50 @@ describe('activityIcon', () => {
     expect(activityIcon(state({ bubble: 'waiting', isActive: false }))).toBe('check');
   });
 
-  it("shows the running tool's icon, else an hourglass while the turn goes on", () => {
+  it("shows the running tool's icon", () => {
     expect(
       activityIcon(state({ tools: [tool('Reading a.ts', { done: true }), tool('Running: ls')] })),
     ).toBe('terminal');
-    expect(activityIcon(state({ tools: [tool('Reading a.ts', { done: true })] }))).toBe(
-      'hourglass',
-    );
-    expect(activityIcon(state({}))).toBe('hourglass');
   });
 
-  it('has nothing to say for an idle agent', () => {
-    expect(activityIcon(state({ isActive: false }))).toBeNull();
+  it("keeps the last tool's icon between tools; the hourglass only before the first", () => {
+    // Between two tools (the last one done, the next not started yet).
+    expect(
+      activityIcon(
+        state({
+          tools: [tool('Running: ls', { done: true }), tool('Reading a.ts', { done: true })],
+        }),
+      ),
+    ).toBe('book');
+    // A turn that hasn't run a tool yet: thinking or writing.
+    expect(activityIcon(state({}))).toBe('hourglass');
+    expect(activityIcon(state({ tools: [] }))).toBe('hourglass');
+  });
+
+  it('shows the hourglass once a question is answered (thinking about the answer)', () => {
+    expect(
+      activityIcon(
+        state({
+          tools: [
+            tool('Running: ls', { done: true }),
+            tool('Waiting for your answer', { done: true }),
+          ],
+        }),
+      ),
+    ).toBe('hourglass');
+  });
+
+  it('reads the cup for an idle agent, its last tool or not', () => {
+    expect(IDLE_ICON).toBe('coffee');
+    expect(activityIcon(state({ isActive: false }))).toBe('coffee');
+    expect(activityIcon(state({ isActive: false, tools: [tool('Edit a', { done: true })] }))).toBe(
+      'coffee',
+    );
+  });
+
+  it('shows the question for a pending AskUserQuestion or ExitPlanMode tool row', () => {
+    expect(toolIcon('Waiting for your answer')).toBe('question');
+    expect(toolIcon('Waiting for plan approval')).toBe('question');
   });
 
   it('keeps only the icons that wait on the user sticky', () => {
@@ -108,6 +146,7 @@ describe('activityIcon', () => {
       'branch',
       'service',
       'hourglass',
+      'coffee',
       'check',
       'hand',
       'question',

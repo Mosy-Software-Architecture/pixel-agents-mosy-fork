@@ -90,19 +90,48 @@ test.describe('Standalone / hooks', () => {
     ).toBe(true);
     await expectOverlayVisible(page, 'Needs approval');
 
+    // idle_prompt comes a minute after ANY unanswered turn: it ends the turn
+    // as Done, never "Waiting for input".
     await sendHookEvent(standalone.hookServerConfig, {
       session_id: sessionId,
       hook_event_name: 'Notification',
       notification_type: 'idle_prompt',
     });
-    await expectOverlayVisible(page, 'Waiting for input');
+    await expectOverlayVisible(page, 'Idle');
     const notificationMessages = await standalone.drainMessages();
     expect(notificationMessages.some((message) => message.type === 'agentToolsClear')).toBe(true);
     expect(
       notificationMessages.some(
-        (message) => message.type === 'agentStatus' && message.status === 'waiting',
+        (message) =>
+          message.type === 'agentStatus' &&
+          message.status === 'waiting' &&
+          message.awaitingInput === false,
       ),
     ).toBe(true);
+
+    // A question the agent asks is what waits for input, with no permission
+    // hand even when Claude Code raises a permission request for it.
+    await sendHookEvent(standalone.hookServerConfig, {
+      session_id: sessionId,
+      hook_event_name: 'PreToolUse',
+      tool_name: 'AskUserQuestion',
+      tool_input: { questions: [] },
+    });
+    await sendHookEvent(standalone.hookServerConfig, {
+      session_id: sessionId,
+      hook_event_name: 'PermissionRequest',
+    });
+    await expectOverlayVisible(page, 'Waiting for input');
+    const questionMessages = await standalone.drainMessages();
+    expect(
+      questionMessages.some(
+        (message) =>
+          message.type === 'agentStatus' &&
+          message.status === 'waiting' &&
+          message.awaitingInput === true,
+      ),
+    ).toBe(true);
+    expect(questionMessages.some((message) => message.type === 'agentToolPermission')).toBe(false);
 
     await sendHookEvent(standalone.hookServerConfig, sessionEndExit(sessionId));
     await expectOverlayCount(page, 0);
