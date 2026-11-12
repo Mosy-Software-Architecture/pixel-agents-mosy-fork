@@ -25,7 +25,14 @@ import { useShowDirectoryNames } from '../hooks/useShowDirectoryNames.js';
 import { shownDirectoryName } from '../office/directoryNames.js';
 import { liveElsewhereBadge, liveElsewhereWarning, resumeNeedsConfirm } from './liveElsewhere.js';
 import { recentAcross } from './recent.js';
-import { remoteHostNote, remoteRowTitle, rowMark } from './remote.js';
+import {
+  isService,
+  remoteCanOpen,
+  remoteGroups,
+  remoteHostNote,
+  remoteRowTitle,
+  rowMark,
+} from './remote.js';
 import { timeAgo } from './timeAgo.js';
 import { conversationTitleColor } from './titleColor.js';
 import { type ConversationLimits, useConversations } from './useConversations.js';
@@ -175,7 +182,8 @@ export function ConversationList({
 }
 
 /** A remote host's sessions under its name: running ones marked with the
- *  house in their status, or why there are none (offline, none lately). */
+ *  house in their status, then its services under Services, marked with the
+ *  gear; or why there are none (offline, none lately). */
 function RemoteHostSection({
   host,
   now,
@@ -190,6 +198,18 @@ function RemoteHostSection({
   onPress: (conversation: Conversation) => void;
 }) {
   const note = remoteHostNote(host);
+  const { work, services } = remoteGroups(host);
+  const row = (conversation: Conversation) => (
+    <ConversationRow
+      key={conversation.sessionId}
+      conversation={conversation}
+      remoteHost={host.name}
+      onPress={() => onPress(conversation)}
+      statusFor={statusFor}
+      now={now}
+      roomy={roomy}
+    />
+  );
   return (
     <section data-testid="remote-host" data-host={host.name} className="pb-6">
       <SectionHeading>{host.name}</SectionHeading>
@@ -198,17 +218,15 @@ function RemoteHostSection({
           {note}
         </p>
       ) : (
-        host.conversations.map((conversation) => (
-          <ConversationRow
-            key={conversation.sessionId}
-            conversation={conversation}
-            remoteHost={host.name}
-            onPress={() => onPress(conversation)}
-            statusFor={statusFor}
-            now={now}
-            roomy={roomy}
-          />
-        ))
+        <>
+          {work.map(row)}
+          {services.length > 0 && (
+            <div data-testid="remote-host-services">
+              <h4 className="m-0 pl-10 pt-6 pb-2 text-2xs font-normal text-text-muted">Services</h4>
+              {services.map(row)}
+            </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -466,12 +484,18 @@ export function ConversationRow({
   // Settings → Show Directory Names off: no Directory line (one Directory says nothing).
   const where = shownDirectoryName(directoryName, useShowDirectoryNames());
   const [confirming, setConfirming] = useState(false);
-  const needsConfirm = resumeNeedsConfirm(conversation);
+  // A service is attached to, never resumed: nothing to confirm, and one
+  // outside tmux can't be opened at all.
+  const service = remoteHost !== undefined && isService(conversation);
+  const needsConfirm = !service && resumeNeedsConfirm(conversation);
+  const disabled = remoteHost !== undefined && !remoteCanOpen(conversation);
   const row = (
     <button
       type="button"
       data-testid="conversation-row"
-      onClick={needsConfirm ? () => setConfirming((open) => !open) : onPress}
+      // aria-disabled, not disabled: the tooltip saying why must still show.
+      aria-disabled={disabled || undefined}
+      onClick={disabled ? undefined : needsConfirm ? () => setConfirming((open) => !open) : onPress}
       aria-expanded={needsConfirm ? confirming : undefined}
       title={
         remoteHost !== undefined
@@ -480,7 +504,7 @@ export function ConversationRow({
             ? `Go to "${title}"`
             : `Resume "${title}"`
       }
-      className={`w-full flex items-center gap-8 px-10 ${roomy ? 'py-8' : where ? 'py-3' : 'py-5'} bg-transparent border-none rounded-none cursor-pointer text-left text-text hover:bg-btn-bg`}
+      className={`w-full flex items-center gap-8 px-10 ${roomy ? 'py-8' : where ? 'py-3' : 'py-5'} bg-transparent border-none rounded-none text-left text-text ${disabled ? 'cursor-default' : 'cursor-pointer hover:bg-btn-bg'}`}
     >
       <span className="shrink-0 flex" style={{ width: MUGSHOT_CROP_SIDE_PX }}>
         {palette !== undefined ? (
@@ -585,8 +609,9 @@ interface RowTrailProps {
   push?: boolean;
   /** The status dot's test id. */
   testId?: string;
-  /** The status's icon: the round dot, or the house of a remote host's row. */
-  icon?: 'dot' | 'remote';
+  /** The status's icon: the round dot, or the house (the gear for a service)
+   *  of a remote host's row. */
+  icon?: 'dot' | 'remote' | 'service';
 }
 
 /**

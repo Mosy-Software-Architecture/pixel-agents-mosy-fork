@@ -2,8 +2,8 @@ import { isRecord } from '../../../../../core/src/isRecord.js';
 import { SESSION_ID_PATTERN } from '../../../conversations.js';
 import {
   CONVERSATION_TITLE_SCAN_BYTES,
-  REMOTE_BOT_SESSION_PATTERN,
   REMOTE_LISTING_DAYS,
+  REMOTE_SERVICE_NAME_PREFIX,
 } from './constants.js';
 import { labelFromChunk } from './conversationTitle.js';
 
@@ -17,8 +17,11 @@ import { labelFromChunk } from './conversationTitle.js';
  * REMOTE_LISTING_DAYS, or running) with each one's newest title records,
  * working directory and entry point, and its tmux sessions. Only the head and
  * tail of a transcript are read, as conversationTitle does locally, and
- * non-interactive runs (`claude -p`, entry point sdk-cli) are not sent.
- * parseRemoteListing turns that into the sessions the sidebar lists.
+ * non-interactive runs (`claude -p`, entry point sdk-cli) are not sent. A
+ * running session that has not written its transcript yet (a service waiting
+ * for its first message) is sent with the path the CLI will write it to.
+ * parseRemoteListing turns that into the sessions the sidebar lists, telling
+ * services (a name starting with REMOTE_SERVICE_NAME_PREFIX) from work.
  */
 
 /** A Claude Code session on a remote host, as the sidebar lists it. */
@@ -41,6 +44,9 @@ export interface RemoteSession {
   live?: { name?: string; status?: string };
   /** The tmux session it runs in, when it runs in one. */
   tmux?: string;
+  /** A service (`claude --name svc-<service>`): opening it attaches to its
+   *  tmux and never resumes it. Only running services are listed. */
+  service?: true;
 }
 
 /** The records whose newest copy the script keeps (conversationTitle's). */
@@ -68,7 +74,7 @@ for f in glob.glob(os.path.join(HOME, 'sessions', '*.json')):
         with open(f) as fh:
             d = json.load(fh)
         if isinstance(d, dict) and isinstance(d.get('pid'), int) and alive(d['pid']):
-            live.append({k: d.get(k) for k in ('sessionId', 'name', 'status', 'tmux', 'cwd')})
+            live.append({k: d.get(k) for k in ('sessionId', 'name', 'status', 'tmux', 'cwd', 'entrypoint', 'startedAt')})
     except Exception:
         pass
 live_ids = set(s.get('sessionId') for s in live)
@@ -122,6 +128,22 @@ for p in glob.glob(os.path.join(HOME, 'projects', '*', '*.jsonl')):
         'labels': list(labels.values()),
     })
 
+# Running, nothing written yet: where the CLI will write it (the project
+# directory is the cwd with every other character than a letter or digit as -).
+listed = set(t['sessionId'] for t in transcripts)
+for s in live:
+    sid, cwd = s.get('sessionId'), s.get('cwd')
+    if not isinstance(sid, str) or sid in listed or not isinstance(cwd, str) or s.get('entrypoint') == 'sdk-cli':
+        continue
+    transcripts.append({
+        'sessionId': sid,
+        'path': os.path.join(HOME, 'projects', re.sub('[^a-zA-Z0-9]', '-', cwd), sid + '.jsonl'),
+        'mtime': s.get('startedAt') if isinstance(s.get('startedAt'), (int, float)) else time.time() * 1000,
+        'cwd': cwd,
+        'entrypoint': s.get('entrypoint'),
+        'labels': [],
+    })
+
 try:
     out = subprocess.run(['tmux', 'ls', '-F', '#{session_name}'], capture_output=True, text=True, timeout=5)
     tmux = out.stdout.splitlines() if out.returncode == 0 else []
@@ -154,9 +176,11 @@ function tmuxSessionOf(
 
 /**
  * The sessions the script's output lists, newest first, or null when it is
- * not the script's output. Left out: non-interactive runs, bots (a session or
- * tmux name matching REMOTE_BOT_SESSION_PATTERN), and sessions with no title
- * (a running one is titled with its registry name) or no working directory.
+ * not the script's output. A service is one whose registry name (else, when
+ * it has none, its transcript's title) starts with REMOTE_SERVICE_NAME_PREFIX.
+ * Left out: non-interactive runs, services no longer running, and sessions
+ * with no title (a running one is titled with its registry name) or no
+ * working directory.
  */
 export function parseRemoteListing(text: string): RemoteSession[] | null {
   let raw: unknown;
@@ -181,12 +205,13 @@ export function parseRemoteListing(text: string): RemoteSession[] | null {
     const running = live.get(sessionId);
     const name = running && str(running.name);
     const tmux = running && tmuxSessionOf(running, tmuxListed);
-    if ([name, tmux].some((n) => n && REMOTE_BOT_SESSION_PATTERN.test(n))) continue;
     const labelLines = strings(t.labels);
     const label = labelFromChunk(labelLines.join('\n'));
     const title = label.title ?? name;
     const cwd = str(t.cwd) ?? (running && str(running.cwd));
     if (!title || !cwd) continue;
+    const service = (name ?? title).startsWith(REMOTE_SERVICE_NAME_PREFIX);
+    if (service && !running) continue;
     sessions.push({
       sessionId,
       transcript,
@@ -204,6 +229,7 @@ export function parseRemoteListing(text: string): RemoteSession[] | null {
           }
         : {}),
       ...(tmux ? { tmux } : {}),
+      ...(service ? { service: true as const } : {}),
     });
   }
   return sessions.sort((a, b) => b.updatedAt - a.updatedAt);

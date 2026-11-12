@@ -135,6 +135,10 @@ function useCardTitle(agentId: number, palette: number): string {
     subscribeAgentSessionInfo,
     () => agentSessionInfo(agentId)?.host,
   );
+  const service = useSyncExternalStore(
+    subscribeAgentSessionInfo,
+    () => agentSessionInfo(agentId)?.service,
+  );
   const profile = cast.profiles[palette];
   return cardTitleLines({
     agentId,
@@ -142,5 +146,6 @@ function useCardTitle(agentId: number, palette: number): string {
     characterName: profile ? characterLabel(profile, palette) : undefined,
     sessionTitle,
     host,
+    service,
   }).join('\n');
 }

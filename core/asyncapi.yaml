@@ -516,6 +516,8 @@ components:
             The remote host the session runs on (config.json `remoteHosts`
             name), for an agent opened from a remote host's list. Absent for a
             local session.
+        remoteKind:
+          $ref: '#/components/schemas/RemoteKind'
 
     LayoutLoaded:
       description: |
@@ -1228,6 +1230,17 @@ components:
             A remote host's session running right now on that host: what it is
             doing there, in the CLI's words (busy, idle, waiting). Absent when
             it runs nowhere, and for a local conversation.
+        remoteKind:
+          $ref: '#/components/schemas/RemoteKind'
+
+    RemoteKind:
+      description: >-
+        What a remote host's session is: `service` when its name starts with
+        `svc-` (launched as `claude --name svc-<service>`: a bot or watcher
+        with its own supervisor, which the office only attaches to and never
+        resumes), else `work`. Absent for a local session.
+      type: string
+      enum: [work, service]
 
     LiveElsewhere:
       description: >-

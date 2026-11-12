@@ -34,6 +34,9 @@ export interface AgentState {
   /** The remote host its session runs on (remoteHosts.ts): its transcript is
    *  a local copy, its terminal an ssh into the host's tmux. */
   remoteHost?: string;
+  /** Its remote session is a service (`claude --name svc-<service>`): the
+   *  label says `svc @host`, its terminal attaches and never resumes. */
+  remoteService?: boolean;
   /** Timestamp of last JSONL data received (ms since epoch) */
   lastDataAt: number;
   /** Total JSONL lines processed for this agent */

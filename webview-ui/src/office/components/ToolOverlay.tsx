@@ -25,7 +25,7 @@ import { contextLeft } from '../contextGauge.js';
 import { shownDirectoryName } from '../directoryNames.js';
 import type { OfficeState } from '../engine/officeState.js';
 import { overlayProjection } from '../projection.js';
-import { agentSessionInfo, sessionColor } from '../sessionLabel.js';
+import { agentSessionInfo, remoteHostLabel, sessionColor } from '../sessionLabel.js';
 import { getCachedSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js';
 import type { ToolActivity } from '../types.js';
@@ -370,7 +370,7 @@ export function ToolOverlay({
                       className="text-2xs leading-none overflow-hidden text-ellipsis block text-text-muted"
                       data-testid="agent-remote-host"
                     >
-                      {`@${session.host}`}
+                      {remoteHostLabel(session)}
                     </span>
                   )}
                 </div>

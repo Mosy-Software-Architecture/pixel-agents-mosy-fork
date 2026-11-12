@@ -96,7 +96,7 @@ export function resendAgentActivity(
     // 6. Session name and colour (and agent setting)
     const info = agent.sessionInfo;
     if ((info && (info.title || info.color || info.agentSetting)) || agent.remoteHost) {
-      send(sessionInfoMessage(id, info ?? {}, agent.remoteHost));
+      send(sessionInfoMessage(id, info ?? {}, agent));
     }
   }
 }

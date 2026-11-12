@@ -31,7 +31,9 @@ import {
  *   shows offline, nothing else.
  * - Open: the agent's terminal is `ssh -t <ssh> tmux new-session -A ...`
  *   (remoteAttachArgs), so closing it closes only ssh: the remote tmux and
- *   the session in it live on.
+ *   the session in it live on. A service (`claude --name svc-<service>`)
+ *   only attaches to the tmux it runs in: `tmux attach-session`, never a new
+ *   session, never a resume.
  * - Character: while that terminal is open, `ssh <ssh> tail -F <transcript>`
  *   appends the transcript's new lines to a local copy (mirrorTranscript),
  *   which the office watches like any transcript.
@@ -159,9 +161,11 @@ function remoteConversation(
     palette: agent?.palette,
     repeat: agent?.repeat,
     agentId,
+    remoteKind: session.service ? 'service' : 'work',
     ...(session.live ? { remoteStatus: session.live.status ?? 'running' } : {}),
     // Running outside tmux: there is nothing to attach to, and opening it
-    // resumes it, a second process on the session (the row asks first).
+    // resumes it, a second process on the session (the row asks first). A
+    // service's row is not pressable then (remoteCanOpen).
     ...(session.live && !session.tmux
       ? {
           liveElsewhere: {
@@ -173,8 +177,9 @@ function remoteConversation(
   };
 }
 
-/** Each host the office has heard from, with its newest sessions; a host not
- *  yet asked is left out until it answers. */
+/** Each host the office has heard from, with its newest work sessions, then
+ *  its services (all of them: only running ones are listed); a host not yet
+ *  asked is left out until it answers. */
 export function remoteHostConversations(
   hosts: readonly RemoteHost[],
   store: AgentStateStore,
@@ -186,9 +191,10 @@ export function remoteHostConversations(
       {
         name: host.name,
         online: listing.online,
-        conversations: listing.sessions
-          .slice(0, REMOTE_CONVERSATIONS_PER_HOST)
-          .map((session) => remoteConversation(session, store, host.name)),
+        conversations: [
+          ...listing.sessions.filter((s) => !s.service).slice(0, REMOTE_CONVERSATIONS_PER_HOST),
+          ...listing.sessions.filter((s) => s.service),
+        ].map((session) => remoteConversation(session, store, host.name)),
       },
     ];
   });
@@ -214,13 +220,24 @@ export function tmuxSessionName(session: RemoteSession): string {
   return slug ? `${slug}-${id}` : id;
 }
 
+/** Whether the office can open a session: a service only by attaching to
+ *  the tmux session it runs in, so one outside tmux can't be opened. */
+export function remoteCanOpen(session: RemoteSession): boolean {
+  return !session.service || session.tmux !== undefined;
+}
+
 /**
  * The agent terminal's ssh arguments: attach to the session's tmux session,
  * creating it when missing with `claude --resume <id>` in the directory the
  * session started in (`-A` attaches when it exists, and then ignores the
- * directory and the command).
+ * directory and the command). A service only attaches (`=` matches the name
+ * exactly): it runs under its own supervisor, and the office must never start
+ * a second one beside it.
  */
 export function remoteAttachArgs(host: RemoteHost, session: RemoteSession): string[] {
+  if (session.service) {
+    return ['-t', host.ssh, `tmux attach-session -t ${shellQuote(`=${session.tmux ?? ''}`)}`];
+  }
   const tmux = [
     'tmux new-session -A',
     `-s ${shellQuote(tmuxSessionName(session))}`,

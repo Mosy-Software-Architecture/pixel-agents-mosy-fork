@@ -14,11 +14,12 @@ import type { AgentState } from './types.js';
  */
 
 /** The `agentSessionInfo` message for an agent; `host`: the remote host its
- *  session runs on (AgentState.remoteHost), absent for a local one. */
+ *  session runs on (AgentState.remoteHost) and `remoteKind` whether it is a
+ *  service there, both absent for a local one. */
 export function sessionInfoMessage(
   id: number,
   info: SessionInfo,
-  host?: string,
+  remote: Pick<AgentState, 'remoteHost' | 'remoteService'> = {},
 ): Record<string, unknown> {
   return {
     type: 'agentSessionInfo',
@@ -26,7 +27,8 @@ export function sessionInfoMessage(
     title: info.title,
     color: info.color,
     agentSetting: info.agentSetting,
-    host,
+    host: remote.remoteHost,
+    remoteKind: remote.remoteHost ? (remote.remoteService ? 'service' : 'work') : undefined,
   };
 }
 
@@ -48,7 +50,7 @@ function setSessionInfo(
 ): void {
   const changed = !sameInfo(agent.sessionInfo, info);
   agent.sessionInfo = info;
-  if (changed) agents.broadcast(sessionInfoMessage(agentId, info, agent.remoteHost));
+  if (changed) agents.broadcast(sessionInfoMessage(agentId, info, agent));
 }
 
 /**

@@ -112,6 +112,8 @@ export const CLAUDE_CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR';
  *  transcripts written within this many days, besides the running ones. */
 export const REMOTE_LISTING_DAYS = 7;
 
-/** Session or tmux names of a remote host that are bots, not someone's
- *  session: left out of the listing (the same rule as `agent remote --all`). */
-export const REMOTE_BOT_SESSION_PATTERN = /bot|claude-tg|watch/i;
+/** A remote session whose name starts with this is a service (a bot, a
+ *  watcher), launched as `claude --name svc-<service>`: the sidebar lists it
+ *  under Services, and opening it attaches to its tmux, never resumes it (the
+ *  same rule as `agent remote --all`). */
+export const REMOTE_SERVICE_NAME_PREFIX = 'svc-';
