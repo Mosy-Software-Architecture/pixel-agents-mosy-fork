@@ -2,6 +2,7 @@ import type { StateAdapter } from '../../core/src/adapter.js';
 import { rosterPick } from '../../core/src/paletteUtils.js';
 import type { HookProvider } from '../../core/src/provider.js';
 import { resendAgentActivity } from './agentActivityResend.js';
+import { handleAgentCharacterClientMessage } from './agentCharacter.js';
 import { buildAgentDiagnostics } from './agentDiagnostics.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
@@ -109,6 +110,7 @@ const KEY_HOOKS_INFO_SHOWN = 'pixel-agents.hooksInfoShown';
 const KEY_SHOW_AREAS = 'pixel-agents.showAreas';
 const KEY_BYPASS_PERMISSIONS = 'pixel-agents.bypassPermissions';
 const KEY_SHOW_HOST_DIRECTORIES = 'pixel-agents.showHostDirectories';
+const KEY_SHOW_DIRECTORY_NAMES = 'pixel-agents.showDirectoryNames';
 
 /** The provider whose conversations the sidebar lists and resumes: the first
  *  that names them and can launch (HookProvider.conversationTitle). */
@@ -152,6 +154,17 @@ function shownHostDirectoriesFor(ctx: ClientMessageContext): HostDirectoryEntry[
   return ctx.store.getAdapter()?.getSetting(KEY_SHOW_HOST_DIRECTORIES, false)
     ? hostDirectoriesFor(ctx)
     : [];
+}
+
+/**
+ * The Directories the conversation sidebar lists: every host Directory, shown
+ * in the drawer or not, plus the user's. The Show setting gates the launch
+ * drawer only: the sidebar groups the sessions that exist, and hiding the
+ * start directory (where every session of a host with no Directories of its
+ * own lives) used to empty it.
+ */
+function conversationDirectoriesFor(ctx: ClientMessageContext) {
+  return listDirectories(hostDirectoriesFor(ctx));
 }
 
 /** The drawer's Directories as this client is sent them (shown host entries + the user's). */
@@ -216,12 +229,20 @@ export function handleClientMessage(
       break;
     }
 
+    case 'setAgentCharacter':
+      // Shared with the VS Code adapter: the new look reaches every office.
+      handleAgentCharacterClientMessage(msg, {
+        store,
+        broadcast: (message) => store.broadcast(message),
+      });
+      break;
+
     case 'requestConversations': {
       if (!ctx.ptyManager || !conversationProvider) break;
       send({
         type: 'conversationsLoaded',
         directories: listConversations(
-          listDirectories(shownHostDirectoriesFor(ctx)),
+          conversationDirectoriesFor(ctx),
           conversationProvider,
           liveSessions(store),
           conversationLimitsFrom(msg.limits),
@@ -239,7 +260,7 @@ export function handleClientMessage(
         type: 'conversationSearchResults',
         ...query,
         ...searchConversations(
-          listDirectories(shownHostDirectoriesFor(ctx)),
+          conversationDirectoriesFor(ctx),
           conversationProvider,
           liveSessions(store),
           query,
@@ -364,6 +385,11 @@ export function handleClientMessage(
 
     case 'setLastSeenVersion':
       adapter?.setSetting(KEY_LAST_SEEN_VERSION, msg.version as string);
+      break;
+
+    case 'setShowDirectoryNames':
+      if (typeof msg.enabled !== 'boolean') break;
+      adapter?.setSetting(KEY_SHOW_DIRECTORY_NAMES, msg.enabled);
       break;
 
     case 'setAlwaysShowLabels':
@@ -816,6 +842,7 @@ function settingsSnapshot(adapter: StateAdapter | undefined) {
     showAreas: adapter?.getSetting(KEY_SHOW_AREAS, false) ?? false,
     bypassPermissions: adapter?.getSetting(KEY_BYPASS_PERMISSIONS, false) ?? false,
     showHostDirectories: adapter?.getSetting(KEY_SHOW_HOST_DIRECTORIES, false) ?? false,
+    showDirectoryNames: adapter?.getSetting(KEY_SHOW_DIRECTORY_NAMES, true) ?? true,
   } as const;
 }
 
@@ -857,6 +884,7 @@ function refuseReadOnly(
     case 'setShowAreas':
     case 'setBypassPermissions':
     case 'setShowHostDirectories':
+    case 'setShowDirectoryNames':
       send(settingsSnapshot(ctx.store.getAdapter()));
       return;
     case 'addExternalAssetDirectory':

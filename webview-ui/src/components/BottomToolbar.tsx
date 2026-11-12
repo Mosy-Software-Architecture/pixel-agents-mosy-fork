@@ -4,7 +4,7 @@ import { useHoverPin } from '../hooks/useHoverPin.js';
 import { popClass, usePresence } from '../hooks/usePresence.js';
 import { useRosterLaunch } from '../hooks/useRosterLaunch.js';
 import { isBrowserRuntime } from '../runtime.js';
-import { CharacterRow } from './CharacterPicker.js';
+import { CharacterRow, type RosterDress } from './CharacterPicker.js';
 import { LaunchDrawer } from './LaunchDrawer.js';
 import { Button } from './ui/Button.js';
 import { PixelIcon } from './ui/PixelIcon.js';
@@ -32,6 +32,8 @@ interface BottomToolbarProps {
   /** A Directory picked from the + drawer: launch into it (wearing `palette`
    *  when a character was picked first). */
   onLaunch: (directory: Directory, palette?: number) => void;
+  /** The agent selected in the office, which the roster's Wear buttons dress. */
+  dress?: RosterDress;
 }
 
 /** Every toolbar button's height: the labelled ones' natural height (26 px
@@ -55,6 +57,7 @@ export function BottomToolbar({
   terminalAvailable,
   terminalUnavailableReason,
   onLaunch,
+  dress,
 }: BottomToolbarProps) {
   // Standalone can launch agents whenever the server has a working PTY. When it
   // doesn't, show the button disabled with the reason rather than hiding it —
@@ -122,6 +125,7 @@ export function BottomToolbar({
             onPick={menus.pick}
             onEdit={menus.edit}
             onNew={menus.addNew}
+            dress={dress}
             isOpen={menus.isRosterOpen}
             // A scrollbar above and below the cards, drawn like the sidebar's,
             // the same gap from the cards on both sides.

@@ -42,6 +42,9 @@ interface SettingsModalProps {
   /** Whether the launch drawer lists the host's own Directories. */
   showHostDirectories: boolean;
   onToggleShowHostDirectories: () => void;
+  /** Directory names under conversations and over characters (on by default). */
+  showDirectoryNames: boolean;
+  onToggleShowDirectoryNames: () => void;
   /** Browser-native layout export (standalone only; VS Code uses the host save dialog). */
   onExportLayout: () => void;
   /** Browser-native layout import from a chosen file (standalone only). */
@@ -69,6 +72,8 @@ export function SettingsModal({
   onToggleBypassPermissions,
   showHostDirectories,
   onToggleShowHostDirectories,
+  showDirectoryNames,
+  onToggleShowDirectoryNames,
   onExportLayout,
   onImportLayout,
 }: SettingsModalProps) {
@@ -272,6 +277,12 @@ export function SettingsModal({
           label={isBrowserRuntime ? 'Show Start Directory' : 'Show Workspace Folders'}
           checked={showHostDirectories}
           onChange={onToggleShowHostDirectories}
+        />
+        <Checkbox
+          label="Show Directory Names"
+          title="Under each recent conversation and over each character. Off suits a host whose sessions all share one Directory."
+          checked={showDirectoryNames}
+          onChange={onToggleShowDirectoryNames}
         />
         <Checkbox label="Debug View" checked={isDebugMode} onChange={onToggleDebugMode} />
       </Modal>

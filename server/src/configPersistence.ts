@@ -23,6 +23,9 @@ export interface AdapterSettings {
   /** Whether the host's own Directories (VS Code's workspace folders, standalone's
    *  start directory) are listed in the launch drawer. Off by default. */
   showHostDirectories: boolean;
+  /** Whether an agent's Directory name shows (under a Recent conversation, over
+   *  its character). On by default. */
+  showDirectoryNames: boolean;
 }
 
 /** All keys in AdapterSettings. Used by adapters to map `pixel-agents.foo` → `foo`.
@@ -40,6 +43,7 @@ export const ADAPTER_SETTING_KEYS = [
   'areaMappings',
   'bypassPermissions',
   'showHostDirectories',
+  'showDirectoryNames',
 ] as const;
 
 export type AdapterSettingKey = (typeof ADAPTER_SETTING_KEYS)[number];
@@ -97,6 +101,7 @@ const DEFAULT_ADAPTER_SETTINGS: AdapterSettings = {
   areaMappings: {},
   bypassPermissions: false,
   showHostDirectories: false,
+  showDirectoryNames: true,
 };
 
 function getConfigFilePath(): string {
@@ -230,6 +235,10 @@ function parseAdapterSettings(raw: unknown): AdapterSettings {
       typeof obj.showHostDirectories === 'boolean'
         ? obj.showHostDirectories
         : DEFAULT_ADAPTER_SETTINGS.showHostDirectories,
+    showDirectoryNames:
+      typeof obj.showDirectoryNames === 'boolean'
+        ? obj.showDirectoryNames
+        : DEFAULT_ADAPTER_SETTINGS.showDirectoryNames,
   };
 }
 

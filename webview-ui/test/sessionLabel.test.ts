@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { SESSION_COLORS } from '../src/constants.js';
 import {
   agentSessionInfo,
+  agentSessionInfoVersion,
   clearAgentSessionInfo,
   sessionColor,
   setAgentSessionInfo,
+  subscribeAgentSessionInfo,
 } from '../src/office/sessionLabel.js';
 
 describe('sessionColor', () => {
@@ -44,5 +46,24 @@ describe('agent session info', () => {
     setAgentSessionInfo(7, { title: 'again' });
     clearAgentSessionInfo(7);
     expect(agentSessionInfo(7)).toBeUndefined();
+  });
+});
+
+describe('agent session info subscribers (the agent cards follow renames)', () => {
+  it('hears every change, and nothing once unsubscribed', () => {
+    let calls = 0;
+    const unsubscribe = subscribeAgentSessionInfo(() => calls++);
+    const before = agentSessionInfoVersion();
+    setAgentSessionInfo(8, { title: 'first' });
+    setAgentSessionInfo(8, { title: 'renamed' });
+    clearAgentSessionInfo(8);
+    // forgetting an agent that has none changes nothing
+    clearAgentSessionInfo(8);
+    expect(calls).toBe(3);
+    expect(agentSessionInfoVersion()).toBe(before + 3);
+    unsubscribe();
+    setAgentSessionInfo(8, { title: 'again' });
+    expect(calls).toBe(3);
+    clearAgentSessionInfo(8);
   });
 });

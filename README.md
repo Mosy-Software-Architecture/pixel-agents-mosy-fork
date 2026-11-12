@@ -127,13 +127,13 @@ Use **Settings → Add Asset Directory** to load external characters, pets, and 
 
 A Directory is a folder you launch agents into. Click **+** to open the drawer, then **+ Directory** to add one: a name, a path (suggested from your past Claude Code sessions), and optionally the Areas its agents should sit in and the characters they wear by default. The pencil on a row you added edits or deletes it; on a phone, long-press the row.
 
-Your workspace folders (VS Code) or the directory the CLI started in (standalone) are listed too once you turn on **Settings → Show Workspace Folders** or **Show Start Directory**.
+Your workspace folders (VS Code) or the directory the CLI started in (standalone) are listed too once you turn on **Settings → Show Workspace Folders** or **Show Start Directory**. That setting is about the launch drawer: the recent conversations always include the sessions of the start directory. When every session lives in one Directory, turn off **Settings → Show Directory Names** to drop its name from the conversation rows and from the label over each character.
 
 ### Characters
 
 Open the roster from the arrow beside **+** and press a character's pencil (or **+ New**) to open the **Characters** view. Dress a character from the wardrobe tabs, recolour any piece, and touch up pixels in the editor; a piece you redraw can be saved as a custom item for the rest of the cast. Nothing changes in the office until you press **Save**. Characters export as a PNG or a config file, and the whole roster as a zip.
 
-Picking a character in the roster and then a Directory launches an agent as that character. In a Directory's settings you can also list its default characters, so its agents are recognisable at a glance.
+Picking a character in the roster and then a Directory launches an agent as that character. In a Directory's settings you can also list its default characters, so its agents are recognisable at a glance. With an agent selected in the office, each roster card also shows **Wear**: it dresses that agent in the character, adopted agents included, and the agent keeps it across reloads and resumes.
 
 ## Where This Is Going
 

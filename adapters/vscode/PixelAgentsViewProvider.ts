@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import type { StateAdapter } from '../../core/src/adapter.js';
 import { rosterPick } from '../../core/src/paletteUtils.js';
 import type { HookProvider } from '../../core/src/provider.js';
+import { handleAgentCharacterClientMessage } from '../../server/src/agentCharacter.js';
 import { buildAgentDiagnostics } from '../../server/src/agentDiagnostics.js';
 import { agentCreatedMessage } from '../../server/src/agentMessages.js';
 import { AgentRuntime } from '../../server/src/agentRuntime.js';
@@ -90,6 +91,7 @@ import {
   GLOBAL_KEY_HOOKS_INFO_SHOWN,
   GLOBAL_KEY_LAST_SEEN_VERSION,
   GLOBAL_KEY_SHOW_AREAS,
+  GLOBAL_KEY_SHOW_DIRECTORY_NAMES,
   GLOBAL_KEY_SHOW_HOST_DIRECTORIES,
   GLOBAL_KEY_SOUND_ENABLED,
   GLOBAL_KEY_WATCH_ALL_SESSIONS,
@@ -515,6 +517,12 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
             this.runtime.registerAgent(agent.sessionId, id);
           }
         }
+      } else if (message.type === 'setAgentCharacter') {
+        // Through the store, so the embedded server's /ws clients see the new look too.
+        handleAgentCharacterClientMessage(message, {
+          store: this.store,
+          broadcast: (m) => this.store.broadcast(m),
+        });
       } else if (message.type === 'focusAgent') {
         const agent = this.store.get(message.id);
         if (agent) {
@@ -573,6 +581,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         this.adapter.setSetting(GLOBAL_KEY_ALWAYS_SHOW_LABELS, message.enabled);
       } else if (message.type === 'setGhostHeadlessAgents') {
         this.adapter.setSetting(GLOBAL_KEY_GHOST_HEADLESS_AGENTS, message.enabled);
+      } else if (message.type === 'setShowDirectoryNames') {
+        this.adapter.setSetting(GLOBAL_KEY_SHOW_DIRECTORY_NAMES, message.enabled);
       } else if (message.type === 'setHooksEnabled') {
         // The provider id is echoed by the webview, never originated; an
         // unknown id names nothing to install into, so it is dropped like a
@@ -728,6 +738,10 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           GLOBAL_KEY_SHOW_HOST_DIRECTORIES,
           false,
         );
+        const showDirectoryNames = this.adapter.getSetting<boolean>(
+          GLOBAL_KEY_SHOW_DIRECTORY_NAMES,
+          true,
+        );
         const config = readConfig();
         this.webview?.postMessage({
           type: 'settingsLoaded',
@@ -743,6 +757,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           showAreas,
           bypassPermissions,
           showHostDirectories,
+          showDirectoryNames,
         });
 
         // One status + at most one consent ask PER PROVIDER. Install state is distinct from the hooksEnabled

@@ -59,6 +59,7 @@ export type ServerMessage =
 export type ClientMessage =
   | WebviewReady
   | LaunchAgent
+  | SetAgentCharacter
   | FocusAgent
   | CloseAgent
   | SaveAgentSeats
@@ -84,6 +85,7 @@ export type ClientMessage =
   | SetShowAreas
   | SetBypassPermissions
   | SetShowHostDirectories
+  | SetShowDirectoryNames
   | SaveDirectory
   | RemoveDirectory
   | RequestDirectorySuggestions
@@ -386,6 +388,7 @@ export interface SettingsLoaded {
   showAreas: boolean;
   bypassPermissions: boolean;
   showHostDirectories: boolean;
+  showDirectoryNames: boolean;
 }
 
 export interface BypassPermissionsUpdated {
@@ -491,6 +494,7 @@ export interface DirectoryConversations {
 export interface Conversation {
   sessionId: string;
   title: string;
+  color?: string;
   updatedAt: number;
   palette?: number;
   repeat?: number;
@@ -548,6 +552,12 @@ export interface LaunchAgent {
   type: 'launchAgent';
   directoryPath?: string;
   palette?: number;
+}
+
+export interface SetAgentCharacter {
+  type: 'setAgentCharacter';
+  id: number;
+  palette: number;
 }
 
 export interface FocusAgent {
@@ -682,6 +692,11 @@ export interface SetBypassPermissions {
 
 export interface SetShowHostDirectories {
   type: 'setShowHostDirectories';
+  enabled: boolean;
+}
+
+export interface SetShowDirectoryNames {
+  type: 'setShowDirectoryNames';
   enabled: boolean;
 }
 

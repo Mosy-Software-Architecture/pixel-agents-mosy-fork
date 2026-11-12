@@ -143,6 +143,7 @@ components:
       oneOf:
         - $ref: '#/components/schemas/WebviewReady'
         - $ref: '#/components/schemas/LaunchAgent'
+        - $ref: '#/components/schemas/SetAgentCharacter'
         - $ref: '#/components/schemas/FocusAgent'
         - $ref: '#/components/schemas/CloseAgent'
         - $ref: '#/components/schemas/SaveAgentSeats'
@@ -168,6 +169,7 @@ components:
         - $ref: '#/components/schemas/SetShowAreas'
         - $ref: '#/components/schemas/SetBypassPermissions'
         - $ref: '#/components/schemas/SetShowHostDirectories'
+        - $ref: '#/components/schemas/SetShowDirectoryNames'
         - $ref: '#/components/schemas/SaveDirectory'
         - $ref: '#/components/schemas/RemoveDirectory'
         - $ref: '#/components/schemas/RequestDirectorySuggestions'
@@ -577,7 +579,8 @@ components:
             The agents whose look this list changed: their characters moved to other indices
             (a character inserted or deleted before them), or theirs was deleted and they
             got a new one. Apply together with the list, so no frame draws an agent from the
-            wrong character. Absent when no agent's look changed.
+            wrong character. Absent when no agent's look changed. Also sent, with the list
+            unchanged, when setAgentCharacter dressed an agent in another character.
           items:
             $ref: '#/components/schemas/AgentLook'
         saveId:
@@ -760,6 +763,7 @@ components:
         - showAreas
         - bypassPermissions
         - showHostDirectories
+        - showDirectoryNames
       properties:
         type:
           const: settingsLoaded
@@ -796,6 +800,13 @@ components:
             Persistent per-host choice whether the host's own Directories (VS
             Code's workspace folders, standalone's start directory) are listed
             in `directoriesLoaded`. Off by default.
+        showDirectoryNames:
+          type: boolean
+          description: >-
+            Persistent per-host choice whether an agent's Directory name is
+            shown: under each Recent conversation and search result, and as
+            the last line of the label over its character. On by default; off
+            suits a host whose sessions all live in one Directory.
 
     BypassPermissionsUpdated:
       description: |
@@ -1158,6 +1169,13 @@ components:
         title:
           type: string
           description: The title the coding agent gave the conversation (a user rename wins), else its last prompt.
+        color:
+          type: string
+          description: >-
+            The colour the user marked the session with, as the CLI names it,
+            lower case (Claude Code's /color), the same as agentSessionInfo.color:
+            the title shows tinted with it, as the label over the character is.
+            Absent when the session has none.
         updatedAt:
           type: number
           description: When the transcript last changed, in ms since the epoch.
@@ -1299,6 +1317,30 @@ components:
             (picked from the roster). Absent, the Directory's default characters
             apply, else the server picks one at random.
 
+    SetAgentCharacter:
+      description: >-
+        Dress a running agent in another character (the roster's Wear button,
+        with that agent selected). The server gives it that character's next
+        free repeat, its teammates and background spawns follow, the look is
+        persisted (so a reload or a resume keeps it), the character moves to
+        the front of the roster, and every office gets the new look in
+        characterProfilesLoaded.agentLooks. Ignored for an agent that copies
+        its Lead's look (a teammate), an unknown agent, a palette outside the
+        cast, or the character the agent already wears.
+      type: object
+      additionalProperties: false
+      required: [type, id, palette]
+      properties:
+        type:
+          const: setAgentCharacter
+        id:
+          type: integer
+          description: The agent to dress.
+        palette:
+          type: integer
+          minimum: 0
+          description: The character to wear, as an index into the character profiles.
+
     FocusAgent:
       description: Focus an agent's terminal.
       type: object
@@ -1401,6 +1443,19 @@ components:
       properties:
         type:
           const: setAlwaysShowLabels
+        enabled:
+          type: boolean
+
+    SetShowDirectoryNames:
+      description: >-
+        Show or hide Directory names under conversations and over characters
+        (settingsLoaded.showDirectoryNames).
+      type: object
+      additionalProperties: false
+      required: [type, enabled]
+      properties:
+        type:
+          const: setShowDirectoryNames
         enabled:
           type: boolean
 

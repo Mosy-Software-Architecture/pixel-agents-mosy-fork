@@ -7,6 +7,7 @@ import { startOfficeSync } from '../characters/officeSprites.js';
 import { cardOrderOf } from '../components/cardBar.js';
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
 import { clearAgentContextUsed, setAgentContextUsed } from '../office/contextGauge.js';
+import { setShowDirectoryNames } from '../office/directoryNames.js';
 import type { ExistingAgentMeta, PendingAgent } from '../office/engine/existingAgents.js';
 import {
   reconcileExistingAgents,
@@ -822,6 +823,9 @@ export function useExtensionMessages(
         }
         if (typeof msg.showHostDirectories === 'boolean') {
           setShowHostDirectories(msg.showHostDirectories as boolean);
+        }
+        if (typeof msg.showDirectoryNames === 'boolean') {
+          setShowDirectoryNames(msg.showDirectoryNames as boolean);
         }
         if (Array.isArray(msg.externalAssetDirectories)) {
           setExternalAssetDirectories(msg.externalAssetDirectories as string[]);

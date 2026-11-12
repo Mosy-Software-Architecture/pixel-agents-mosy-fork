@@ -4,7 +4,7 @@ import { useRosterLaunch } from '../hooks/useRosterLaunch.js';
 import { isTypingInTerminal } from '../terminal/terminalDom.js';
 import type { AgentAppearance, TabStatus } from './AgentCard.js';
 import { AgentCardList } from './AgentCardList.js';
-import { PhoneCharacterPicker } from './CharacterPicker.js';
+import { PhoneCharacterPicker, type RosterDress } from './CharacterPicker.js';
 import { LaunchDrawer } from './LaunchDrawer.js';
 import { PixelIcon } from './ui/PixelIcon.js';
 
@@ -37,6 +37,8 @@ interface MobileAgentBarProps {
   statusFor: (agentId: number) => TabStatus | null;
   /** Persist a dragged order; absent in a read-only office. */
   onReorder?: (order: number[]) => void;
+  /** The agent selected in the office, which the roster's Wear buttons dress. */
+  dress?: RosterDress;
 }
 
 /**
@@ -65,6 +67,7 @@ export function MobileAgentBar({
   getAppearance,
   statusFor,
   onReorder,
+  dress,
 }: MobileAgentBarProps) {
   // The + card's drawer and the roster beside it: a pick opens the drawer for
   // that character. A plain press of + never launches: it opens the plain
@@ -104,6 +107,7 @@ export function MobileAgentBar({
         onPick={menus.pick}
         onEdit={menus.edit}
         onNew={menus.addNew}
+        dress={dress}
       />
       <div className="flex items-stretch gap-6 px-8 py-6">
         {/* Launch card pinned on the left; only the agent cards scroll.

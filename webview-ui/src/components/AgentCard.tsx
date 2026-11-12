@@ -1,7 +1,13 @@
+import { useSyncExternalStore } from 'react';
+
+import { useCast } from '../characters/castStore.js';
+import { characterLabel } from '../characters/profiles.js';
 import { CARD_CONTEXT_BAR_HEIGHT_PX, CARD_MUGSHOT_CROP_TOP_ROW } from '../constants.js';
 import { ContextBar } from '../office/ContextBar.js';
 import { contextLeft, useAgentContextUsed } from '../office/contextGauge.js';
+import { agentSessionInfo, subscribeAgentSessionInfo } from '../office/sessionLabel.js';
 import type { CardVariant, CloseMode } from './cardBar.js';
+import { cardTitleLines } from './cardBar.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { STATUS_DOT } from './statusDot.js';
 import { Button } from './ui/Button.js';
@@ -61,11 +67,12 @@ export function AgentCard({
   onClose,
 }: AgentCardProps) {
   const contextUsed = useAgentContextUsed(agentId);
+  const title = useCardTitle(agentId, appearance.palette);
   return (
     <div
       className={`group relative pointer-events-auto flex items-stretch gap-1 p-1 cursor-pointer border-2 shrink-0 ${CARD_VARIANT[variant]}`}
       onClick={() => onSelect(agentId)}
-      title={`Agent ${agentId}`}
+      title={title}
     >
       <CharacterMugShot
         palette={appearance.palette}
@@ -112,4 +119,23 @@ export function AgentCard({
       )}
     </div>
   );
+}
+
+/** The card's tooltip (cardTitleLines): the character's name over the session's,
+ *  kept current as the cast is edited and the session is renamed. An external
+ *  char_N.png character (past the cast) has no name to show: the wire carries
+ *  its pixels, not its file name. */
+function useCardTitle(agentId: number, palette: number): string {
+  const cast = useCast();
+  const sessionTitle = useSyncExternalStore(
+    subscribeAgentSessionInfo,
+    () => agentSessionInfo(agentId)?.title,
+  );
+  const profile = cast.profiles[palette];
+  return cardTitleLines({
+    agentId,
+    // the roster card's name for it
+    characterName: profile ? characterLabel(profile, palette) : undefined,
+    sessionTitle,
+  }).join('\n');
 }

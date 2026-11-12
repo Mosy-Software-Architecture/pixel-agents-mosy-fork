@@ -291,6 +291,23 @@ describe('claudeProvider', () => {
     it('falls back to "Using X" for unknown tools', () => {
       expect(claudeProvider.formatToolStatus('FancyTool', {})).toBe('Using FancyTool');
     });
+
+    it("names a message's recipient, never an agent id or socket (it read as part of the session's name)", () => {
+      expect(claudeProvider.formatToolStatus('SendMessage', { to: 'marketing' })).toBe(
+        '-> marketing',
+      );
+      expect(claudeProvider.formatToolStatus('SendMessage', { recipient: 'lead' })).toBe('-> lead');
+      for (const to of [
+        'a3c821563f7645bd5',
+        '7f783b00',
+        '7f783b00-21a5-4258-bbee-4c9f88f67762',
+        'uds:/tmp/cc-socks/55594.sock',
+        '',
+      ]) {
+        expect(claudeProvider.formatToolStatus('SendMessage', { to })).toBe('Sending message');
+      }
+      expect(claudeProvider.formatToolStatus('SendMessage', {})).toBe('Sending message');
+    });
     it('handles undefined input', () => {
       expect(claudeProvider.formatToolStatus('Read', undefined)).toBe('Reading ');
     });
