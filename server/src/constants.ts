@@ -215,6 +215,12 @@ export const USAGE_LIMITS_FILE_NAME = 'usage-limits.json';
 /** An unchanged usage report is still passed on (and saved) once this old, so
  *  the office's "updated N min ago" stays true while a session is open. */
 export const USAGE_UNCHANGED_REFRESH_MS = 60_000;
+/** How often a provider's usage endpoint is read while a privileged office is
+ *  connected (and never more often than this). */
+export const USAGE_POLL_INTERVAL_MS = 60_000;
+/** While the endpoint's last answer is younger than this, it decides which
+ *  windows exist: a status line report cannot add a window it did not list. */
+export const USAGE_ENDPOINT_FRESH_MS = 3 * 60_000;
 
 // ── Avatar Customization ────────────────────────────────────
 /** The character profiles agents are drawn from, in the persistence dir (shared by both surfaces). */

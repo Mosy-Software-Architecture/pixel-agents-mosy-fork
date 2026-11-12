@@ -26,6 +26,7 @@ import { registerTerminalRoutes } from './terminal/terminalRoutes.js';
 import type { TerminalSessions } from './terminal/terminalSessions.js';
 import type { AgentState } from './types.js';
 import {
+  holdUsagePolling,
   PRIVILEGED_BROADCAST_TYPES,
   recordUsageReport,
   usageLimitsMessage,
@@ -259,6 +260,8 @@ function registerWebSocketRoute(
     }
 
     const { store } = options;
+    // The account usage endpoint is read while a privileged office is here.
+    const releaseUsagePolling = privileged ? holdUsagePolling() : null;
 
     // Pipe store events to WebSocket client
     const onAgentAdded = (id: number, agent: AgentState) => {
@@ -302,6 +305,7 @@ function registerWebSocketRoute(
     });
 
     socket.on('close', () => {
+      releaseUsagePolling?.();
       store.off('agentAdded', onAgentAdded);
       store.off('agentRemoved', onAgentRemoved);
       store.off('broadcast', onBroadcast);

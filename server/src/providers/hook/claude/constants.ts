@@ -117,3 +117,17 @@ export const REMOTE_LISTING_DAYS = 7;
  *  under Services, and opening it attaches to its tmux, never resumes it (the
  *  same rule as `agent remote --all`). */
 export const REMOTE_SERVICE_NAME_PREFIX = 'svc-';
+
+// ── Usage endpoint (the usage bars' second source) ─────────────
+/** The account usage endpoint Claude Code's `/usage` reads. */
+export const CLAUDE_OAUTH_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
+/** The beta header that endpoint requires for an OAuth bearer. */
+export const CLAUDE_OAUTH_BETA = 'oauth-2025-04-20';
+/** How long one read of the endpoint may take. */
+export const CLAUDE_OAUTH_USAGE_TIMEOUT_MS = 8_000;
+/** Where Claude Code keeps its OAuth credentials on macOS (a generic keychain item). */
+export const CLAUDE_KEYCHAIN_SERVICE = 'Claude Code-credentials';
+/** Where it keeps them elsewhere, under its config directory. */
+export const CLAUDE_CREDENTIALS_FILE_NAME = '.credentials.json';
+/** How long reading the keychain may take. */
+export const CLAUDE_KEYCHAIN_TIMEOUT_MS = 5_000;

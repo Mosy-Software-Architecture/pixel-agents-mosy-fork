@@ -50,6 +50,7 @@ import { PtySessionManager } from './terminal/ptySessionManager.js';
 import { RemotePtySessions, startPtyHostProcess } from './terminal/remotePtySessions.js';
 import { reattachTerminalAgents } from './terminal/standaloneAgentLauncher.js';
 import type { TerminalSessions } from './terminal/terminalSessions.js';
+import { startUsagePolling } from './usageLimits.js';
 import { isLoopbackHost, normalizeHostname } from './wsAuth.js';
 
 // ── Argument parsing ──────────────────────────────────────────
@@ -441,6 +442,9 @@ async function main(): Promise<void> {
     // An installed usage bridge runs the script from ~/.pixel-agents/hooks/:
     // bring it up to this version's copy.
     for (const provider of hookProviders) provider.usageBridge?.refreshScript(packageRoot);
+    // With Usage Bars on, the provider's usage endpoint is read now and then
+    // every minute while a privileged office is connected.
+    const stopUsagePolling = startUsagePolling((m) => store.broadcast({ ...m }));
 
     // Sync runtime refs with persisted settings BEFORE first scan tick. The
     // runtime's single hooksEnabled ref follows the Claude provider until the
@@ -520,6 +524,7 @@ async function main(): Promise<void> {
       // host: just disconnect; the agents keep running.
       await ptyManager.shutdown();
       characterProfilesWatcher.dispose();
+      stopUsagePolling();
       // With the PTY host, stop, not dispose: the saved list keeps whoever is
       // still running, for the next server to reattach. In process, dispose:
       // every terminal is gone, and the next server starts with no agents.

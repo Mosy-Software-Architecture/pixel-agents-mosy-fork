@@ -31,6 +31,7 @@ import type {
 } from '../../../../../core/src/provider.js';
 import { isRecord } from '../../../serverConfig.js';
 import { SETTINGS_BACKUP_SUFFIX } from './constants.js';
+import { pollClaudeOAuthUsage } from './oauthUsage.js';
 import {
   installStatusLineBridge,
   isStatusLineBridgeInstalled,
@@ -46,6 +47,10 @@ export const USAGE_BRIDGE_DISCLOSURE = [
     `settings.json${SETTINGS_BACKUP_SUFFIX}.`,
   "Only your usage percentages and reset times, and each session's context percentage, are sent, " +
     'to the Pixel Agents server on this machine.',
+  'While Usage Bars is on, the office also reads your account usage (every window, such as a ' +
+    "model's share of the weekly limit) from the same endpoint Claude Code's /usage reads, with " +
+    "Claude Code's own sign-in token, read locally from the keychain or ~/.claude/.credentials.json. " +
+    'The token never leaves this machine except to that endpoint, and is never stored or logged.',
   'You can turn this off at any time from Settings → Usage Bars.',
 ].join('\n\n');
 
@@ -91,4 +96,5 @@ export const claudeUsageBridge: UsageBridge = {
   refreshScript: refreshStatusLineScript,
   normalizeReport: normalizeClaudeUsageReport,
   normalizeContext: normalizeClaudeContextReport,
+  pollUsage: () => pollClaudeOAuthUsage(),
 };

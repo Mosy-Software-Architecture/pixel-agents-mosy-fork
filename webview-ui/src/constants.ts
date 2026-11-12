@@ -817,6 +817,9 @@ export const USAGE_BAR_LOW_FRACTION = 0.2;
 export const USAGE_BAR_TICK_MS = 30_000;
 /** Distance from the office's left edge: past the 40px button column at left 8. */
 export const USAGE_BARS_LEFT_PX = 8 + 40 + 8;
+/** Past this many bars in all (weekly, 5-hour and the extra ones), the extra
+ *  bars stack two per row to keep the block short. */
+export const USAGE_BARS_SINGLE_COLUMN_MAX = 4;
 // ── Loading screen (a lamp-lit corner of the office while it loads) ──
 /** The loading screen's zoom, as the office counts it: DEVICE pixels per
  *  sprite pixel (the office at 5x on the phone, 3x on desktop). */
