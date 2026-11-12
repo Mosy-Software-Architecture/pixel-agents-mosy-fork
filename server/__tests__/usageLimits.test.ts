@@ -11,7 +11,11 @@ vi.mock('os', async () => {
 });
 
 const {
+  holdUsagePolling,
+  pollUsageEndpointsForTests,
+  recordPolledUsage,
   recordUsageReport,
+  startUsagePolling,
   usageLimitsMessage,
   usageSnapshotMessages,
   resetUsageLimitsCacheForTests,
@@ -19,7 +23,8 @@ const {
 const { normalizeClaudeUsageReport, normalizeClaudeContextReport } =
   await import('../src/providers/hook/claude/claudeUsageBridge.js');
 const { claudeProvider } = await import('../src/providers/index.js');
-const { USAGE_UNCHANGED_REFRESH_MS } = await import('../src/constants.js');
+const { USAGE_ENDPOINT_FRESH_MS, USAGE_POLL_INTERVAL_MS, USAGE_UNCHANGED_REFRESH_MS } =
+  await import('../src/constants.js');
 
 const report = (fiveHour?: number, sevenDay?: number) => ({
   rate_limits: {
@@ -151,5 +156,145 @@ describe('recordUsageReport', () => {
       },
       usageLimitsMessage('claude'),
     ]);
+  });
+});
+
+/** An endpoint answer like the account's of 2026-11-12: no 5-hour window, the
+ *  weekly limit and the Fable share of it. */
+const WEEKLY = { usedPercentage: 79, resetsAt: 1_900_500_000 };
+const FABLE = {
+  key: 'weekly_scoped:Fable',
+  label: 'Fable',
+  group: 'scoped' as const,
+  usedPercentage: 43,
+  resetsAt: 1_900_500_000,
+  usedPercentOfWeekly: 22,
+  allowancePercentOfWeekly: 50,
+};
+const polledNoFiveHour = {
+  status: 'ok' as const,
+  usage: { sevenDay: WEEKLY },
+  windows: [{ key: 'weekly_all', label: 'Weekly', group: 'weekly' as const, ...WEEKLY }, FABLE],
+};
+
+describe('recordPolledUsage (the merge rule)', () => {
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-usage-'));
+    resetUsageLimitsCacheForTests();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  it('stores every window the endpoint reported, and survives a restart', () => {
+    expect(recordPolledUsage('claude', polledNoFiveHour, 1000)).toBe(true);
+    resetUsageLimitsCacheForTests();
+    expect(usageLimitsMessage('claude')).toEqual({
+      type: 'usageLimits',
+      providerId: 'claude',
+      sevenDay: WEEKLY,
+      windows: polledNoFiveHour.windows,
+      polledAt: 1000,
+      endpointStatus: 'ok',
+      updatedAt: 1000,
+    });
+  });
+
+  it('drops a 5-hour window the endpoint no longer lists', () => {
+    recordUsageReport(claudeProvider, report(42, 18), 500);
+    recordPolledUsage('claude', polledNoFiveHour, 1000);
+    expect(usageLimitsMessage('claude').fiveHour).toBeUndefined();
+  });
+
+  it('lets the status line move the numbers between polls, not add a window', () => {
+    recordPolledUsage('claude', polledNoFiveHour, 1000);
+    expect(recordUsageReport(claudeProvider, report(42, 80), 2000)).toBe(true);
+    expect(usageLimitsMessage('claude')).toMatchObject({
+      sevenDay: { usedPercentage: 80 },
+      windows: polledNoFiveHour.windows,
+    });
+    expect(usageLimitsMessage('claude').fiveHour).toBeUndefined();
+  });
+
+  it('takes the 5-hour window from the status line once the endpoint is stale', () => {
+    recordPolledUsage('claude', polledNoFiveHour, 1000);
+    recordUsageReport(claudeProvider, report(42, 80), 1000 + USAGE_ENDPOINT_FRESH_MS);
+    expect(usageLimitsMessage('claude').fiveHour).toMatchObject({ usedPercentage: 42 });
+  });
+
+  it('keeps the last values when a read fails, and says why once', () => {
+    recordPolledUsage('claude', polledNoFiveHour, 1000);
+    expect(recordPolledUsage('claude', { status: 'unauthorized' }, 70_000)).toBe(true);
+    expect(recordPolledUsage('claude', { status: 'unauthorized' }, 130_000)).toBe(false);
+    expect(usageLimitsMessage('claude')).toMatchObject({
+      sevenDay: WEEKLY,
+      windows: polledNoFiveHour.windows,
+      polledAt: 1000,
+      updatedAt: 1000,
+      endpointStatus: 'unauthorized',
+    });
+  });
+
+  it('records a failure with nothing known yet', () => {
+    recordPolledUsage('claude', { status: 'offline' }, 1000);
+    expect(usageLimitsMessage('claude')).toEqual({
+      type: 'usageLimits',
+      providerId: 'claude',
+      endpointStatus: 'offline',
+    });
+  });
+});
+
+describe('usage endpoint polling', () => {
+  const bridge = claudeProvider.usageBridge!;
+
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-usage-'));
+    resetUsageLimitsCacheForTests();
+  });
+
+  afterEach(() => {
+    resetUsageLimitsCacheForTests();
+    vi.restoreAllMocks();
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  it('reads the endpoint at startup and broadcasts the answer', async () => {
+    vi.spyOn(bridge, 'isInstalled').mockReturnValue(true);
+    const poll = vi.spyOn(bridge, 'pollUsage').mockResolvedValue(polledNoFiveHour);
+    const broadcast = vi.fn();
+    const stop = startUsagePolling(broadcast);
+    await vi.waitFor(() => expect(broadcast).toHaveBeenCalledTimes(1));
+    expect(poll).toHaveBeenCalledTimes(1);
+    expect(broadcast.mock.calls[0][0]).toMatchObject({ type: 'usageLimits', windows: [{}, FABLE] });
+    stop();
+  });
+
+  it('never reads it more often than once a minute, however many offices connect', async () => {
+    vi.spyOn(bridge, 'isInstalled').mockReturnValue(true);
+    const poll = vi.spyOn(bridge, 'pollUsage').mockResolvedValue(polledNoFiveHour);
+    const stop = startUsagePolling(vi.fn());
+    await vi.waitFor(() => expect(poll).toHaveBeenCalledTimes(1));
+    const release = holdUsagePolling();
+    const releaseToo = holdUsagePolling();
+    await pollUsageEndpointsForTests(Date.now() + 1000);
+    expect(poll).toHaveBeenCalledTimes(1);
+    await pollUsageEndpointsForTests(Date.now() + USAGE_POLL_INTERVAL_MS + 1000);
+    expect(poll).toHaveBeenCalledTimes(2);
+    release();
+    releaseToo();
+    stop();
+  });
+
+  it('does not read it while Usage Bars is off', async () => {
+    vi.spyOn(bridge, 'isInstalled').mockReturnValue(false);
+    const poll = vi.spyOn(bridge, 'pollUsage');
+    const stop = startUsagePolling(vi.fn());
+    const release = holdUsagePolling();
+    await pollUsageEndpointsForTests();
+    expect(poll).not.toHaveBeenCalled();
+    release();
+    stop();
   });
 });
