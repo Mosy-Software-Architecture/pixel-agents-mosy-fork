@@ -4,6 +4,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import { expect, test } from '../../fixtures/standalone';
 import { arrangeNextClaudeInvocation, claudeScenario } from '../../helpers/mock-claude';
+import { agentCard } from '../../helpers/office';
 
 /**
  * The standalone mobile shell on a phone-sized touch viewport: office and
@@ -194,7 +195,7 @@ test.describe('Standalone / mobile shell', () => {
 
     // + launches, and the shell slides over once the terminal appears.
     await launchFromCard(page, standalone.workspaceDir);
-    const card = page.getByTitle('Agent 1', { exact: true });
+    const card = agentCard(page, 1);
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expectView(page, 'terminal');
     await expect(page.locator('.xterm').first()).toContainText('mock claude session', {
@@ -250,7 +251,7 @@ test.describe('Standalone / mobile shell', () => {
         .build(),
     );
     await launchFromCard(page, standalone.workspaceDir);
-    const card = page.getByTitle('Agent 1', { exact: true });
+    const card = agentCard(page, 1);
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card).toHaveCount(0, { timeout: 15_000 });
     const showOffice = page.getByTitle('Show office', { exact: true });
@@ -270,7 +271,7 @@ test.describe('Standalone / mobile shell', () => {
     await row.tap();
 
     // The panel closes, the agent is back, and the shell slides to its terminal.
-    await expect(page.getByTitle('Agent 2', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(agentCard(page, 2)).toBeVisible({ timeout: 15_000 });
     await expectView(page, 'terminal');
     await expect(row).not.toBeInViewport();
   });
@@ -446,7 +447,7 @@ test.describe('Standalone / mobile shell', () => {
     await launchTerminal(page, standalone, 'mobile camera follow');
     await page.getByTitle('Show office', { exact: true }).tap();
     // A card tap in the office focuses the character and follows it.
-    await page.getByTitle('Agent 1', { exact: true }).tap();
+    await agentCard(page, 1).tap();
     await expect.poll(() => cameraFollowId(page)).not.toBeNull();
 
     // Pinch in place: the midpoint stays put, so the follow survives.

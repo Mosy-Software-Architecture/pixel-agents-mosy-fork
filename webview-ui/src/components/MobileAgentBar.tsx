@@ -35,6 +35,9 @@ interface MobileAgentBarProps {
   launchUnavailableReason: string | null;
   getAppearance: (agentId: number) => AgentAppearance;
   statusFor: (agentId: number) => TabStatus | null;
+  /** The cards' activity line, in their tooltips (the phone has no room
+   *  for the label the desktop column draws). */
+  activityFor: (agentId: number) => string;
   /** Persist a dragged order; absent in a read-only office. */
   onReorder?: (order: number[]) => void;
   /** The agent selected in the office, which the roster's Wear buttons dress. */
@@ -66,6 +69,7 @@ export function MobileAgentBar({
   launchUnavailableReason,
   getAppearance,
   statusFor,
+  activityFor,
   onReorder,
   dress,
 }: MobileAgentBarProps) {
@@ -190,6 +194,7 @@ export function MobileAgentBar({
           closeOnlyWhenActive
           getAppearance={getAppearance}
           statusFor={statusFor}
+          activityFor={activityFor}
           onSelect={onSelectAgent}
           onClose={onCloseAgent}
         />

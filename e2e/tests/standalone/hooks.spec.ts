@@ -112,9 +112,9 @@ test.describe('Standalone / hooks', () => {
 });
 
 test.describe('Standalone / context after /clear', () => {
-  // /clear empties the context: a real 0, so the gauge over the character and
-  // the bar along the agent's card both drop to FULL rather than vanishing.
-  test('a cleared session shows a full gauge on the character and the card @area:standalone', async ({
+  // /clear empties the context: a real 0, so the bar along the agent's card
+  // drops to FULL rather than vanishing.
+  test('a cleared session shows a full context gauge on its card @area:standalone', async ({
     page,
     standalone,
   }) => {

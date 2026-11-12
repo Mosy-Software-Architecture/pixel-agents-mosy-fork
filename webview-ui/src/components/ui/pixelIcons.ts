@@ -355,6 +355,85 @@ export const ICONS = {
     '.....##.',
     '......##',
   ],
+  // The activity icons over a character (office/activityIcon.ts) that no
+  // other control already drew: what an agent is doing, at a glance.
+  // An open book: reading (Read, Grep, Glob).
+  book: [
+    '##....##',
+    '#.#..#.#',
+    '#..##..#',
+    '#..##..#',
+    '#..##..#',
+    '#..##..#',
+    '##.##.##',
+    '..####..',
+  ],
+  // A globe: the web (WebFetch, WebSearch).
+  globe: [
+    '..####..',
+    '.#.##.#.',
+    '#..##..#',
+    '########',
+    '#..##..#',
+    '#..##..#',
+    '.#.##.#.',
+    '..####..',
+  ],
+  // An envelope: a message to another agent (SendMessage).
+  envelope: [
+    '........',
+    '########',
+    '##....##',
+    '#.#..#.#',
+    '#..##..#',
+    '#......#',
+    '########',
+    '........',
+  ],
+  // One box over two, like an org chart: spawning a sub-agent (Agent, Task).
+  branch: [
+    '..####..',
+    '..####..',
+    '...##...',
+    '.######.',
+    '.#....#.',
+    '###..###',
+    '###..###',
+    '........',
+  ],
+  // An hourglass, sand still on top: a turn going on with no tool running.
+  hourglass: [
+    '########',
+    '.######.',
+    '..####..',
+    '...##...',
+    '...##...',
+    '..#..#..',
+    '.#....#.',
+    '########',
+  ],
+  // A raised hand: the agent waits for a permission.
+  hand: [
+    '...#.#..',
+    '.#.#.#..',
+    '.#.#.#.#',
+    '.#####.#',
+    '.#######',
+    '########',
+    '.######.',
+    '..####..',
+  ],
+  // A question mark: the agent asked the user something.
+  question: [
+    '..####..',
+    '.##..##.',
+    '.....##.',
+    '....##..',
+    '...##...',
+    '...##...',
+    '........',
+    '...##...',
+  ],
 } as const satisfies Record<string, readonly string[]>;
 
 export type PixelIconName = keyof typeof ICONS;

@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { AgentActivity, AgentAppearance, TabStatus } from '../components/AgentCard.js';
 import { TERMINAL_DRAWER_DEFAULT_WIDTH_PX } from '../constants.js';
+import { activityStateOf, activityText } from '../office/activityText.js';
 import type { OfficeState } from '../office/engine/officeState.js';
+import { pendingAckOf } from '../office/pendingAck.js';
 import type { ToolActivity } from '../office/types.js';
 import type { TerminalConnectionStatus } from '../terminal/terminalClient.js';
 import { clampDrawerWidth } from './drawerWidth.js';
@@ -55,6 +57,10 @@ export interface TerminalDrawerController {
   close: () => void;
   onResizeStart: (e: ReactMouseEvent) => void;
   getAppearance: (agentId: number) => AgentAppearance;
+  /** The card's activity line ("Running: npm test", "Idle"): the same words
+   *  the office reads for its character (office/activityText.ts), current
+   *  as of the call. */
+  activityFor: (agentId: number) => string;
   /** Card status dot: 'disconnected' (red) for a terminal whose socket
    *  dropped, otherwise the agent's activity; null before its first activity. */
   statusFor: (agentId: number) => TabStatus | null;
@@ -203,6 +209,14 @@ export function useTerminalDrawer({
     [agentSeenActivity, agentTools, agentStatuses],
   );
 
+  const activityFor = useCallback(
+    (id: number): string =>
+      activityText(
+        activityStateOf(getOfficeState().characters.get(id), agentTools[id], pendingAckOf(id)),
+      ),
+    [getOfficeState, agentTools],
+  );
+
   const onStatusChange = useCallback((agentId: number, status: TerminalConnectionStatus | null) => {
     setConnStatuses((prev) => {
       if (status === null) {
@@ -240,6 +254,7 @@ export function useTerminalDrawer({
     close,
     onResizeStart,
     getAppearance,
+    activityFor,
     statusFor,
     onStatusChange,
   };

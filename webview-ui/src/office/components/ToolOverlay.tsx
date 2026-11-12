@@ -1,42 +1,42 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '../../components/ui/Button.js';
 import { PixelIcon } from '../../components/ui/PixelIcon.js';
+import type { PixelIconName } from '../../components/ui/pixelIcons.js';
 import {
   BUBBLE_FADE_DURATION_SEC,
-  BUBBLE_SITTING_OFFSET_PX,
-  BUBBLE_VERTICAL_OFFSET_PX,
   CHARACTER_SITTING_OFFSET_PX,
   CONTEXT_GAUGE_GAP_PX,
   CONTEXT_GAUGE_HEIGHT_PX,
   CONTEXT_GAUGE_WIDTH_PX,
-  OVERLAY_BUBBLE_Z_INDEX,
+  OVERLAY_LABEL_HOVERED_Z_INDEX,
   OVERLAY_LABEL_SELECTED_Z_INDEX,
   OVERLAY_LABEL_Z_INDEX,
   TEAM_LEAD_COLOR,
   TEAM_ROLE_COLOR,
-  TOOL_OVERLAY_GAP_PX,
   TOOL_OVERLAY_VERTICAL_OFFSET,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import { useShowDirectoryNames } from '../../hooks/useShowDirectoryNames.js';
+import { activityIcon, STICKY_ACTIVITY_ICONS } from '../activityIcon.js';
+import {
+  activityStateOf,
+  activityText,
+  NEEDS_APPROVAL_TEXT,
+  runningTool,
+  WAITING_INPUT_TEXT,
+} from '../activityText.js';
 import { ContextBar } from '../ContextBar.js';
 import { contextLeft } from '../contextGauge.js';
 import { shownDirectoryName } from '../directoryNames.js';
 import type { OfficeState } from '../engine/officeState.js';
 import { pendingAckOf } from '../pendingAck.js';
 import { overlayProjection } from '../projection.js';
-import { agentSessionInfo, remoteHostLabel, sessionColor } from '../sessionLabel.js';
-import { getCachedSprite } from '../sprites/spriteCache.js';
-import { BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js';
+import { agentSessionInfo, remoteHostLabel, sessionColor, sessionName } from '../sessionLabel.js';
+import { characterZoom } from '../subagentScale.js';
 import type { ToolActivity } from '../types.js';
 import { CharacterState } from '../types.js';
-
-// Both turn-end states show the green checkmark bubble. A finished turn (Stop)
-// shows ONLY the checkmark (the label falls through to its normal idle text);
-// going idle waiting on the user (Notification(idle_prompt)) additionally
-// surfaces this label. Driven by Character.waitingAwaitingInput.
-const WAITING_INPUT_ACTIVITY_TEXT = 'Waiting for input';
 
 interface ToolOverlayProps {
   officeState: OfficeState;
@@ -48,62 +48,47 @@ interface ToolOverlayProps {
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
   onCloseAgent: (id: number) => void;
+  /** Settings → Always Show Activity Icons: every character's icon, not only
+   *  the hovered or selected one's (the waiting ones always show). */
   alwaysShowOverlay: boolean;
 }
 
-/** Derive a short human-readable activity string from tools/status */
-function getActivityText(
-  agentId: number,
-  agentTools: Record<number, ToolActivity[]>,
-  isActive: boolean,
-  bubbleType: 'permission' | 'waiting' | null,
-  waitingAwaitingInput: boolean,
-): string {
-  if (bubbleType === 'permission') return 'Needs approval';
-  // Only the idle case ("Waiting for input") gets a dedicated label. A finished
-  // turn (Stop, waitingAwaitingInput=false) falls through so the checkmark alone
-  // signals "done", same as the original behavior.
-  if (bubbleType === 'waiting' && waitingAwaitingInput) return WAITING_INPUT_ACTIVITY_TEXT;
+/** The icons that speak for an agent waiting on the user, in its status colour. */
+const ICON_COLOR: Partial<Record<PixelIconName, string>> = {
+  check: 'text-status-success',
+  hand: 'text-status-permission',
+  question: 'text-status-permission',
+};
 
-  const tools = agentTools[agentId];
-  if (tools && tools.length > 0) {
-    // Find the latest non-done tool
-    const activeTool = [...tools].reverse().find((t) => !t.done);
-    if (activeTool) {
-      if (activeTool.permissionWait) return 'Needs approval';
-      return activeTool.status;
-    }
-    // All tools done but agent still active (mid-turn) — keep showing last tool status
-    if (isActive) {
-      const lastTool = tools[tools.length - 1];
-      if (lastTool) return lastTool.status;
-    }
-  }
-
-  return 'Idle';
-}
-
-/** A speech-bubble sprite blitted into a DOM canvas. Bubbles live in the DOM
- *  (not the office canvas) so they can stack ABOVE the status label panels —
- *  canvas content can never out-paint the DOM overlay. */
-function OverlayBubble({ cached, dpr }: { cached: HTMLCanvasElement; dpr: number }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.width = cached.width;
-    canvas.height = cached.height;
-    canvas.getContext('2d')?.drawImage(cached, 0, 0);
-  }, [cached]);
+/** One activity icon in a small pixel panel: `unit` CSS px per icon pixel
+ *  (the character's zoom, so it is drawn as crisply as the sprite under it). */
+function ActivityBadge({
+  name,
+  unit,
+  opacity,
+}: {
+  name: PixelIconName;
+  unit: number;
+  opacity: number;
+}) {
   return (
-    <canvas
-      ref={canvasRef}
-      className="block"
-      style={{ width: cached.width / dpr, height: cached.height / dpr }}
-    />
+    <span
+      className={`flex bg-bg border-border ${ICON_COLOR[name] ?? 'text-text'}`}
+      style={{ borderWidth: unit, borderStyle: 'solid', padding: unit, opacity }}
+      data-testid="activity-icon"
+      data-icon={name}
+    >
+      <PixelIcon name={name} scale={unit} />
+    </span>
   );
 }
 
+/**
+ * Over each character: an 8×8 icon saying what its agent is doing
+ * (office/activityIcon.ts), and, while it is hovered or selected, a small
+ * panel with its session's name. The activity's words live on the agent's
+ * card (AgentCard); here they are screen-reader text only.
+ */
 export function ToolOverlay({
   officeState,
   agents,
@@ -116,7 +101,7 @@ export function ToolOverlay({
   onCloseAgent,
   alwaysShowOverlay,
 }: ToolOverlayProps) {
-  // Settings → Show Directory Names: the label's last line.
+  // Settings → Show Directory Names: a line of the name panel.
   const showDirectory = useShowDirectoryNames();
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -131,7 +116,7 @@ export function ToolOverlay({
 
   const el = containerRef.current;
   if (!el) return null;
-  // dpr is also needed to size the bubble canvases in CSS px (OverlayBubble).
+  // dpr turns device pixels (zoom) into the CSS px the DOM is laid out in.
   const dpr = window.devicePixelRatio || 1;
   const project = overlayProjection(
     officeState.getLayout(),
@@ -143,7 +128,7 @@ export function ToolOverlay({
 
   const selectedId = officeState.selectedAgentId;
   const hoveredId = officeState.hoveredAgentId;
-  // Hovering a sub-agent swaps its lead's label for its own (they'd overlap).
+  // Hovering a sub-agent hides its lead's name panel (they'd overlap).
   const hoveredSubParentId =
     hoveredId !== null
       ? subagentCharacters.find((s) => s.id === hoveredId)?.parentAgentId
@@ -161,255 +146,224 @@ export function ToolOverlay({
         const isSelected = selectedId === id;
         const isHovered = hoveredId === id;
         const isSub = ch.isSubagent;
-        // An agent that rang and hasn't been acknowledged keeps its bubble
-        // (office/pendingAck.ts): the permission dots, or the checkmark of its
-        // finished turn, at full strength until the user looks. The label's
-        // text still follows the turn end (Done vs "Waiting for input").
+        const sub = isSub ? subagentCharacters.find((s) => s.id === id) : undefined;
+        // An agent that rang and hasn't been acknowledged keeps its icon
+        // (office/pendingAck.ts): the hand, or the checkmark of its finished
+        // turn, at full strength until the user looks.
         const pending = pendingAckOf(id);
-        const bubbleType = pending ?? ch.bubbleType;
-        const awaitingInput = ch.waitingAwaitingInput ?? false;
+        const state = activityStateOf(
+          ch,
+          sub ? subagentTools[sub.parentAgentId]?.[sub.parentToolId] : agentTools[id],
+          pending,
+        );
+        const icon = activityIcon(state);
+        // The icon shows for the hovered or selected character, for every one
+        // with Always Show on, and always while it waits on the user.
+        const showIcon =
+          icon !== null &&
+          (alwaysShowOverlay || isSelected || isHovered || STICKY_ACTIVITY_ICONS.has(icon));
+        // The label element e2e reads: where the old text label used to be
+        // (Always Show on, or hovered/selected).
+        const labelShown = alwaysShowOverlay || isSelected || isHovered;
+        if (!labelShown && !showIcon) return null;
 
-        // Speech bubble (permission dots / done checkmark) — rendered here in
-        // the DOM, above the label panels (OVERLAY_BUBBLE_Z_INDEX over the label panels), for every
-        // character regardless of label visibility. Mirrors the geometry the
-        // canvas renderer used. The idle "Waiting for input" state speaks
-        // through its label, not a bubble, unless it is still pending.
-        let bubbleNode = null;
-        // Screen y of the bubble's top edge, when one shows: the label stacks above it.
-        let bubbleTop: number | null = null;
-        if (bubbleType && (pending || !(bubbleType === 'waiting' && awaitingInput))) {
-          const cachedBubble = getCachedSprite(
-            bubbleType === 'permission' ? BUBBLE_PERMISSION_SPRITE : BUBBLE_WAITING_SPRITE,
-            zoom,
-          );
-          const bubbleSittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0;
-          const alpha =
-            !pending && bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC
-              ? ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
-              : 1;
-          bubbleTop =
-            project.toScreenY(ch.y + bubbleSittingOff - BUBBLE_VERTICAL_OFFSET_PX) -
-            (cachedBubble.height + zoom) / dpr;
-          bubbleNode = (
-            <div
-              className="absolute -translate-x-1/2 pointer-events-none"
-              style={{
-                left: project.toScreenX(ch.x),
-                // Bubble bottom sits one sprite pixel above the character's
-                // anchor: project the anchor, then lift by the bubble's own
-                // device-pixel height plus one zoomed pixel, in CSS px.
-                top: bubbleTop,
-                opacity: alpha,
-                zIndex: OVERLAY_BUBBLE_Z_INDEX,
-              }}
-            >
-              <OverlayBubble cached={cachedBubble} dpr={dpr} />
-            </div>
-          );
+        // A finished turn's check (and the question) fades with the bubble
+        // it stands for, unless the agent is still pending.
+        const iconOpacity =
+          state.bubble === 'waiting' && !pending && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC
+            ? ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
+            : 1;
+
+        // What the old text label over the character said, now for screen
+        // readers (and the e2e specs) only: who it is (unless the name panel
+        // shows it), what it is doing, where. Same rules: a Done agent says
+        // nothing (its checkmark does), a sub-agent only while hovered or
+        // selected, and a hovered sub-agent's lead gives way to it.
+        const isDone = !pending && state.bubble === 'waiting' && !state.awaitingInput;
+        const givesWay = (isSub && !isSelected && !isHovered) || id === hoveredSubParentId;
+        const quiet = (isDone && !isSelected && !isHovered) || givesWay;
+        const showName = (isSelected || isHovered) && id !== hoveredSubParentId;
+        const subLabel = sub?.label || 'Subtask';
+        const directoryName = shownDirectoryName(ch.directoryName, showDirectory);
+        let spokenText: string | null = null;
+        if (quiet) {
+          // Nothing to say.
+        } else if (isSub) {
+          if (state.bubble === 'waiting' && state.awaitingInput) spokenText = WAITING_INPUT_TEXT;
+          else if (state.bubble === 'permission') spokenText = NEEDS_APPROVAL_TEXT;
+          // Selecting a sub-agent reveals its live tool; hovering, its task.
+          else spokenText = (isSelected ? runningTool(state.tools)?.status : undefined) ?? subLabel;
+        } else {
+          const session = agentSessionInfo(id);
+          const who = showName ? [] : [session?.title, teamRoleOf(ch)];
+          const where = showName ? [] : [directoryName, remoteHostLabel(session)];
+          spokenText = [...who, activityText(state), ...where].filter(Boolean).join(', ');
         }
 
-        // Only show the label for hovered or selected agents (unless
-        // always-show is on) — the bubble renders regardless.
-        if (!alwaysShowOverlay && !isSelected && !isHovered) {
-          return bubbleNode && <Fragment key={id}>{bubbleNode}</Fragment>;
-        }
-
-        // Position above character: the sprite's top edge (the tallest hair
-        // reaches it), or the bubble's when one shows over the head.
+        // Stacked upward from the head: a sub-agent's is lower (drawn one
+        // zoom step smaller, office/subagentScale.ts), and so is its icon.
+        const chZoom = characterZoom(isSub, zoom);
+        const unit = chZoom / dpr;
         const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
         const screenX = project.toScreenX(ch.x);
-        const screenY = project.toScreenY(ch.y + sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET);
-        const labelBottom = Math.min(screenY, bubbleTop ?? screenY) - TOOL_OVERLAY_GAP_PX;
+        const headTop =
+          project.toScreenY(ch.y) + ((sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET) * chZoom) / dpr;
 
-        // A "Done" agent (finished turn: waiting bubble without awaitingInput)
-        // shows ONLY its floating green checkmark bubble, never the label panel
-        // (the panel would cover the bubble). Render an empty positioned marker
-        // so overlay counts stay stable and hover/select can still bring the
-        // panel back. When always-show is off, the early return above already
-        // keeps the panel hidden for idle agents.
-        // Likewise for a label that gives way: a sub-agent's shows only while
-        // hovered or selected, even with always-show on (the lead's label
-        // already names the subtask), and a hovered sub-agent's lead hides
-        // its own so the sub's isn't covered.
-        // A pending Done (office/pendingAck.ts) lasts until acknowledged, so it
-        // keeps its label (stacked above the checkmark) like any idle agent.
-        const isDone = !pending && bubbleType === 'waiting' && !awaitingInput;
-        const givesWay = (isSub && !isSelected && !isHovered) || id === hoveredSubParentId;
-        if ((isDone && !isSelected && !isHovered) || givesWay) {
-          return (
-            <Fragment key={id}>
-              {bubbleNode}
-              <div
-                className="absolute"
-                style={{ left: screenX, top: screenY, pointerEvents: 'none' }}
-                data-testid="agent-overlay"
-                data-agent-id={id}
-              />
-            </Fragment>
-          );
-        }
-
-        // Get activity text
-        const hasWaitingBubble = bubbleType === 'waiting';
-        const subHasPermission = isSub && bubbleType === 'permission';
-        let activityText: string;
-        if (hasWaitingBubble && awaitingInput) {
-          // Idle, waiting on the user -> dedicated label. A finished turn (Stop)
-          // shows only the checkmark and falls through to the normal idle text.
-          activityText = WAITING_INPUT_ACTIVITY_TEXT;
-        } else if (isSub) {
-          if (subHasPermission) {
-            activityText = 'Needs approval';
-          } else {
-            // Hover shows the subtask title; SELECTING the sub reveals its live
-            // tool activity (watched sub-agents stream it via subagentToolStart).
-            const sub = subagentCharacters.find((s) => s.id === id);
-            const rows = sub ? subagentTools[sub.parentAgentId]?.[sub.parentToolId] : undefined;
-            const activeRow =
-              isSelected && rows ? [...rows].reverse().find((t) => !t.done) : undefined;
-            activityText = activeRow?.status ?? (sub?.label || 'Subtask');
-          }
-        } else {
-          activityText = getActivityText(id, agentTools, ch.isActive, bubbleType, awaitingInput);
-        }
-
-        // Determine dot color
-        const tools = agentTools[id];
-        const hasPermission = subHasPermission || tools?.some((t) => t.permissionWait && !t.done);
-        const hasActiveTools = tools?.some((t) => !t.done);
-        const isActive = ch.isActive;
-        const hasWaiting = bubbleType === 'waiting';
-
-        let dotColor: string | null = null;
-        if (hasPermission || hasWaiting) {
-          dotColor = 'var(--color-status-permission)';
-        } else if (isActive && hasActiveTools) {
-          dotColor = 'var(--color-status-active)';
-        }
-
-        // Team info
-        const teamRoleLabel = ch.isTeamLead ? 'LEAD' : ch.agentName || null;
-
-        // The session's name, tinted with the colour the user marked it with.
-        // Sub-agents have no session of their own, so never a name.
-        const session = isSub ? undefined : agentSessionInfo(id);
-        const sessionTitle = session?.title;
-        const sessionTitleColor = sessionColor(session?.color);
-
-        // Context gauge. Every agent gets one — lead, teammate, adopted,
-        // headless — as soon as the server reports its context (a cleared
-        // session's 0 included: a full gauge). Sub-agents never do: they have
-        // no session of their own, so nothing is ever reported for them.
-        // Drawn as a health bar: full when the context is empty, draining as
-        // it fills (the colour still warns by the share used).
         const contextRatio = ch.contextTokens / ch.maxContextTokens;
-        const showContextGauge = !isSub && ch.contextReported === true;
-        const directoryName = shownDirectoryName(ch.directoryName, showDirectory);
+        // Its icon slot keeps its size when empty, so the name sits still.
+        const badgeSide = 12 * unit;
 
         return (
-          <Fragment key={id}>
-            {bubbleNode}
-            <div
-              // The label grows upward from labelBottom, so extra lines and the
-              // context gauge never reach down over the head.
-              className="absolute flex flex-col items-center -translate-x-1/2 -translate-y-full"
-              style={{
-                left: screenX,
-                top: labelBottom,
-                pointerEvents: isSelected ? 'auto' : 'none',
-                opacity: alwaysShowOverlay && !isSelected && !isHovered ? 0.75 : 1,
-                zIndex: isSelected ? OVERLAY_LABEL_SELECTED_Z_INDEX : OVERLAY_LABEL_Z_INDEX,
-              }}
-              data-testid="agent-overlay"
-              data-agent-id={id}
-            >
-              <div className="flex items-center border-border px-8 pt-2 pb-4 gap-5 pixel-panel whitespace-nowrap max-w-2xs">
-                {dotColor && (
-                  <span
-                    className={`w-6 h-6 rounded-full shrink-0 ${isActive && !hasPermission && !hasWaiting ? 'pixel-pulse' : ''}`}
-                    style={{ background: dotColor }}
-                  />
-                )}
-                <div className="flex flex-col gap-0 overflow-hidden">
-                  {sessionTitle && (
-                    <span
-                      className="overflow-hidden text-ellipsis block leading-none"
-                      style={{ fontSize: '20px', color: sessionTitleColor }}
-                      data-testid="agent-session-title"
-                      data-session-color={session?.color}
-                    >
-                      {sessionTitle}
-                    </span>
-                  )}
-                  {teamRoleLabel && (
-                    <span
-                      className="overflow-hidden text-ellipsis block leading-none"
-                      style={{
-                        fontSize: '18px',
-                        color: ch.isTeamLead ? TEAM_LEAD_COLOR : TEAM_ROLE_COLOR,
-                        fontWeight: ch.isTeamLead ? 'bold' : undefined,
-                      }}
-                    >
-                      {teamRoleLabel}
-                    </span>
-                  )}
-                  <span
-                    className="overflow-hidden text-ellipsis block leading-none"
-                    style={{
-                      fontSize: isSub ? '20px' : '22px',
-                      fontStyle: isSub ? 'italic' : undefined,
-                    }}
-                  >
-                    {activityText}
+          <div
+            key={id}
+            // The stack grows upward from the head, so the name and the
+            // context gauge never reach down over it.
+            className="absolute flex flex-col items-center -translate-x-1/2 -translate-y-full"
+            style={{
+              left: screenX,
+              top: headTop - unit,
+              pointerEvents: showName && isSelected ? 'auto' : 'none',
+              zIndex: !showName
+                ? OVERLAY_LABEL_Z_INDEX
+                : isSelected
+                  ? OVERLAY_LABEL_SELECTED_Z_INDEX
+                  : OVERLAY_LABEL_HOVERED_Z_INDEX,
+            }}
+            data-testid={labelShown ? 'agent-overlay' : undefined}
+            data-agent-id={labelShown ? id : undefined}
+          >
+            {showName &&
+              (isSub ? (
+                <NamePanel>
+                  <span className="block leading-none italic" style={{ fontSize: '20px' }}>
+                    {subLabel}
                   </span>
-                  {directoryName && (
-                    <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
-                      {directoryName}
-                    </span>
-                  )}
-                  {/* A remote host's session: where it runs, whether or not
-                      Directory names show. */}
-                  {session?.host && (
-                    <span
-                      className="text-2xs leading-none overflow-hidden text-ellipsis block text-text-muted"
-                      data-testid="agent-remote-host"
-                    >
-                      {remoteHostLabel(session)}
-                    </span>
-                  )}
-                </div>
-                {isSelected && !isSub && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCloseAgent(id);
-                    }}
-                    title="Close agent"
-                    className="ml-2 shrink-0"
-                  >
-                    {/* The panel's padding favours the text (pb > pt) and the × fills
-                        rows 1–5 of its grid: 3px lower centres it on the label line. */}
-                    <PixelIcon name="close" className="translate-y-3" />
-                  </Button>
-                )}
-              </div>
-              {showContextGauge && (
-                <ContextBar
-                  used={contextRatio}
-                  width={CONTEXT_GAUGE_WIDTH_PX}
-                  height={CONTEXT_GAUGE_HEIGHT_PX}
-                  style={{ marginTop: CONTEXT_GAUGE_GAP_PX }}
-                  title={`${Math.round(contextLeft(contextRatio) * 100)}% context left (${(ch.contextTokens / 1000).toFixed(0)}k of ${(ch.maxContextTokens / 1000).toFixed(0)}k tokens used)`}
-                  testId="context-gauge"
-                  pct={Math.round(contextRatio * 100)}
+                </NamePanel>
+              ) : (
+                <AgentNamePanel
+                  id={id}
+                  teamRole={teamRoleOf(ch)}
+                  isTeamLead={ch.isTeamLead}
+                  directoryName={directoryName}
+                  onClose={isSelected ? () => onCloseAgent(id) : undefined}
                 />
-              )}
+              ))}
+            {/* Every agent's context gauge, under its name (sub-agents have
+                no session of their own, so never one). Health-bar style:
+                full when the context is empty, draining as it fills. */}
+            {showName && !isSub && ch.contextReported === true && (
+              <ContextBar
+                used={contextRatio}
+                width={CONTEXT_GAUGE_WIDTH_PX}
+                height={CONTEXT_GAUGE_HEIGHT_PX}
+                style={{ marginTop: CONTEXT_GAUGE_GAP_PX }}
+                title={`${Math.round(contextLeft(contextRatio) * 100)}% context left (${(ch.contextTokens / 1000).toFixed(0)}k of ${(ch.maxContextTokens / 1000).toFixed(0)}k tokens used)`}
+                testId="context-gauge"
+                pct={Math.round(contextRatio * 100)}
+              />
+            )}
+            <div
+              className="flex items-end justify-center"
+              style={{ width: badgeSide, height: badgeSide, marginTop: showName ? unit : 0 }}
+            >
+              {showIcon && <ActivityBadge name={icon} unit={unit} opacity={iconOpacity} />}
             </div>
-          </Fragment>
+            {spokenText && <span className="sr-only">{spokenText}</span>}
+          </div>
         );
       })}
     </>
+  );
+}
+
+/** A team member's role: LEAD, or a teammate's name. */
+function teamRoleOf(ch: { isTeamLead?: boolean; agentName?: string }): string | undefined {
+  return ch.isTeamLead ? 'LEAD' : ch.agentName || undefined;
+}
+
+/** The small panel over a hovered or selected character: its lines, then
+ *  anything trailing them (the selected agent's ×). */
+function NamePanel({ children, trailing }: { children: ReactNode; trailing?: ReactNode }) {
+  return (
+    <div className="flex items-center border-border px-8 pt-2 pb-4 gap-5 pixel-panel whitespace-nowrap max-w-2xs">
+      <div className="flex flex-col gap-0 overflow-hidden">{children}</div>
+      {trailing}
+    </div>
+  );
+}
+
+/** A hovered or selected agent's name panel: its session's name in its
+ *  /color, its team role, Directory and remote host; × when selected. */
+function AgentNamePanel({
+  id,
+  teamRole,
+  isTeamLead,
+  directoryName,
+  onClose,
+}: {
+  id: number;
+  teamRole: string | undefined;
+  isTeamLead?: boolean;
+  directoryName: string | undefined;
+  onClose?: () => void;
+}) {
+  const session = agentSessionInfo(id);
+  return (
+    <NamePanel
+      trailing={
+        onClose && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            title="Close agent"
+            className="ml-2 shrink-0"
+          >
+            {/* The panel's padding favours the text (pb > pt) and the × fills
+                rows 1–5 of its grid: 3px lower centres it on the label line. */}
+            <PixelIcon name="close" className="translate-y-3" />
+          </Button>
+        )
+      }
+    >
+      <span
+        className="overflow-hidden text-ellipsis block leading-none"
+        style={{ fontSize: '20px', color: sessionColor(session?.color) }}
+        data-testid="agent-session-title"
+        data-session-color={session?.color}
+      >
+        {sessionName(id, session?.title)}
+      </span>
+      {teamRole && (
+        <span
+          className="overflow-hidden text-ellipsis block leading-none"
+          style={{
+            fontSize: '18px',
+            color: isTeamLead ? TEAM_LEAD_COLOR : TEAM_ROLE_COLOR,
+            fontWeight: isTeamLead ? 'bold' : undefined,
+          }}
+        >
+          {teamRole}
+        </span>
+      )}
+      {directoryName && (
+        <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
+          {directoryName}
+        </span>
+      )}
+      {/* A remote host's session: where it runs, whether or not Directory
+          names show. */}
+      {session?.host && (
+        <span
+          className="text-2xs leading-none overflow-hidden text-ellipsis block text-text-muted"
+          data-testid="agent-remote-host"
+        >
+          {remoteHostLabel(session)}
+        </span>
+      )}
+    </NamePanel>
   );
 }

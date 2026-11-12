@@ -1577,7 +1577,7 @@ test.describe('Hooks ON / lifecycle', () => {
   // PixelAgentsViewProvider's webviewReady handler} would surface as "I
   // turned X off, restarted, X is back on."
   //
-  // Trigger: toggle Always Show Labels off, close+reopen the panel (forces a
+  // Trigger: toggle Always Show Activity Icons off, close+reopen the panel (forces a
   // fresh webviewReady), open the Settings modal, read the indicator state.
   // It must still be unchecked.
   test('settings toggles persist across a webview reload @area:cross-cutting', async ({
@@ -1589,14 +1589,16 @@ test.describe('Hooks ON / lifecycle', () => {
     // Read whatever the fixture default is, then flip it. The persistence
     // assertion is about the FLIPPED state surviving a reload, not about the
     // initial default value.
-    const initial = await getSettingChecked(frame, 'Always Show Labels');
+    const initial = await getSettingChecked(frame, 'Always Show Activity Icons');
     const initialGhost = await getSettingChecked(frame, 'Display Headless as Ghosts');
-    narrator.step('flipping "Always Show Labels" + "Display Headless as Ghosts" in Settings');
+    narrator.step(
+      'flipping "Always Show Activity Icons" + "Display Headless as Ghosts" in Settings',
+    );
     await setSettings(frame, {
       alwaysShowLabels: !initial,
       ghostHeadlessAgents: !initialGhost,
     });
-    expect(await getSettingChecked(frame, 'Always Show Labels')).toBe(!initial);
+    expect(await getSettingChecked(frame, 'Always Show Activity Icons')).toBe(!initial);
     expect(await getSettingChecked(frame, 'Display Headless as Ghosts')).toBe(!initialGhost);
     narrator.check('both toggles are now flipped');
 
@@ -1609,7 +1611,7 @@ test.describe('Hooks ON / lifecycle', () => {
 
     // After settingsLoaded re-hydrates, the toggle must still be in the
     // flipped state — not back to the fixture default.
-    expect(await getSettingChecked(frame, 'Always Show Labels')).toBe(!initial);
+    expect(await getSettingChecked(frame, 'Always Show Activity Icons')).toBe(!initial);
     expect(await getSettingChecked(frame, 'Display Headless as Ghosts')).toBe(!initialGhost);
     narrator.check('flipped state survives the reload — persisted through config.json');
   });

@@ -33,6 +33,11 @@ const OVERLAY_TIMEOUT_MS = 15_000;
  *    match, not after the state holds for N seconds.
  */
 
+/** An agent's card in the card bar (desktop column or phone row), by agent id. */
+export function agentCard(frame: OverlaySurface, agentId: number): Locator {
+  return frame.locator(`[data-testid="agent-card"][data-agent-id="${agentId}"]`);
+}
+
 export function getAgentOverlays(frame: OverlaySurface): Locator {
   return frame.locator('[data-testid="agent-overlay"]');
 }
@@ -104,11 +109,13 @@ export async function expectNoOverlayWithTexts(
 }
 
 /**
- * Context gauges. Every agent that has taken a turn shows one; sub-agents
- * never do, so the count doubles as an assertion about who owns a session.
+ * Context gauges, read off the agent cards (the one over a character shows
+ * only while it is hovered or selected). Every main agent that has taken a
+ * turn has one; sub-agents never do (nor a card), so the count doubles as an
+ * assertion about who owns a session.
  */
 export function getContextGauges(frame: OverlaySurface): Locator {
-  return frame.locator('[data-testid="context-gauge"]');
+  return frame.locator('[data-testid="card-context-bar"]');
 }
 
 export async function expectContextGauge(

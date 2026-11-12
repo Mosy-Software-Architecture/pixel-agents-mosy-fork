@@ -1,6 +1,7 @@
 /**
- * Agents' session names and colours (agentSessionInfo), for the label over
- * each character (ToolOverlay). Kept apart from the characters, like the
+ * Agents' session names and colours (agentSessionInfo), for the first line of
+ * each agent's card (AgentCard) and the name panel over a hovered character
+ * (ToolOverlay). Kept apart from the characters, like the
  * context gauges: the server re-sends them on every connect, possibly before
  * the layout has seated the agents they belong to.
  */
@@ -18,6 +19,12 @@ export interface AgentSessionInfo {
   host?: string;
   /** Its remote session is a service there (the label says `svc @host`). */
   service?: boolean;
+}
+
+/** The session's name, `Agent <id>` until it has one, so it always says
+ *  something (the card's first line, the name over a hovered character). */
+export function sessionName(agentId: number, title: string | undefined): string {
+  return title || `Agent ${agentId}`;
 }
 
 /** The label's line for a remote session (`@host`, `svc @host` for a

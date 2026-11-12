@@ -624,7 +624,7 @@ export async function setSettings(frame: WebviewSurface, settings: WebviewSettin
     await setCheckbox(settingsModal, 'Instant Detection (Hooks)', settings.hooksEnabled);
   }
   if (settings.alwaysShowLabels !== undefined) {
-    await setCheckbox(settingsModal, 'Always Show Labels', settings.alwaysShowLabels);
+    await setCheckbox(settingsModal, 'Always Show Activity Icons', settings.alwaysShowLabels);
   }
   if (settings.ghostHeadlessAgents !== undefined) {
     await setCheckbox(settingsModal, 'Display Headless as Ghosts', settings.ghostHeadlessAgents);
@@ -647,7 +647,7 @@ export async function setSettings(frame: WebviewSurface, settings: WebviewSettin
 
 /**
  * Enable Watch All Sessions so hooks-only external sessions are adopted.
- * (Always Show Labels and hooks are already on via the fixture-seeded
+ * (Always Show Activity Icons and hooks are already on via the fixture-seeded
  * config.json and the product default — see e2e/helpers/launch.ts.)
  */
 export async function configureHookServerTestSettings(frame: WebviewSurface): Promise<void> {

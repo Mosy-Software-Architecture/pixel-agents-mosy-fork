@@ -242,7 +242,7 @@ export function SettingsModal({
           </>
         )}
         <Checkbox
-          label="Always Show Labels"
+          label="Always Show Activity Icons"
           checked={alwaysShowOverlay}
           onChange={onToggleAlwaysShowOverlay}
         />

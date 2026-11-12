@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 
 import {
   AGENT_CARD_HEIGHT_PX,
+  AGENT_CARD_ROW_WIDTH_PX,
   AGENT_CARD_WIDTH_PX,
   TERMINAL_HIDE_RIBBON_REST_RATIO,
   TERMINAL_SIDEBAR_WIDTH_PX,
@@ -25,9 +26,10 @@ interface TerminalHideRibbonProps {
 export function TerminalHideRibbon({ shown, onHide }: TerminalHideRibbonProps) {
   const style = {
     height: AGENT_CARD_HEIGHT_PX,
+    // At rest, shorter than a card's mug shot part; hovered, as wide as a row.
     '--ribbon-rest': `${AGENT_CARD_WIDTH_PX * TERMINAL_HIDE_RIBBON_REST_RATIO}px`,
     // From the bar's right edge to the cards' left edge (a card is centred).
-    '--ribbon-full': `${(TERMINAL_SIDEBAR_WIDTH_PX + AGENT_CARD_WIDTH_PX) / 2}px`,
+    '--ribbon-full': `${(TERMINAL_SIDEBAR_WIDTH_PX + AGENT_CARD_ROW_WIDTH_PX) / 2}px`,
   } as CSSProperties;
   return (
     <div

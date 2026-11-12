@@ -163,6 +163,7 @@ export function MobileShell({
         launchUnavailableReason={terminalUnavailableReason}
         getAppearance={drawer.getAppearance}
         statusFor={drawer.statusFor}
+        activityFor={drawer.activityFor}
         dress={dress}
       />
 

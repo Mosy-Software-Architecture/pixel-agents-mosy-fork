@@ -884,6 +884,7 @@ function App() {
               focusedAgentId={focusedAgentId}
               getAppearance={terminalDrawer.getAppearance}
               statusFor={terminalDrawer.statusFor}
+              activityFor={terminalDrawer.activityFor}
               onSelect={handleCardSelect}
               onClose={handleCloseAgent}
               onReorder={officeReadOnly ? undefined : saveCardOrder}

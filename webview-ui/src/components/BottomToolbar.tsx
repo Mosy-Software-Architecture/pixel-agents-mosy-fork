@@ -111,8 +111,10 @@ export function BottomToolbar({
     // Bottom-left. The terminal panel docks on the right edge, so it never
     // reaches these buttons and no lift is needed. The column spans the
     // office so the roster above the toolbar can use its width; it passes
-    // presses through everywhere but its panels.
-    <div className="absolute left-10 right-10 bottom-10 z-20 flex flex-col items-start gap-4 pointer-events-none">
+    // presses through everywhere but its panels. One layer above the version
+    // label (z-20, bottom-right): in a narrow office the launch drawer and its
+    // rows' pencils reach over it.
+    <div className="absolute left-10 right-10 bottom-10 z-21 flex flex-col items-start gap-4 pointer-events-none">
       {rosterPanel.mounted && (
         <div
           ref={menus.rosterRef}
