@@ -429,12 +429,30 @@ export interface UsageLimits {
   fiveHour?: UsageWindow;
   sevenDay?: UsageWindow;
   updatedAt?: number;
+  windows?: UsagePlanWindow[];
+  polledAt?: number;
+  endpointStatus?: UsageEndpointStatus;
 }
 
 export interface UsageWindow {
   usedPercentage: number;
   resetsAt: number;
 }
+
+export interface UsagePlanWindow {
+  key: string;
+  label: string;
+  group: UsagePlanWindowGroup;
+  usedPercentage: number;
+  resetsAt?: number;
+  usedPercentOfWeekly?: number;
+  allowancePercentOfWeekly?: number;
+  locked?: boolean;
+}
+
+export type UsagePlanWindowGroup = 'session' | 'weekly' | 'scoped' | 'overage';
+
+export type UsageEndpointStatus = 'ok' | 'offline' | 'unauthorized';
 
 export interface ExternalAssetDirectoriesUpdated {
   type: 'externalAssetDirectoriesUpdated';

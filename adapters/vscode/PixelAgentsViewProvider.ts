@@ -73,7 +73,12 @@ import {
 } from '../../server/src/providers/index.js';
 import { recentCharactersMessage, recordCharacterUse } from '../../server/src/recentCharacters.js';
 import { PixelAgentsServer } from '../../server/src/server.js';
-import { applyUsageBridgeChoice, usageSnapshotMessages } from '../../server/src/usageLimits.js';
+import {
+  applyUsageBridgeChoice,
+  holdUsagePolling,
+  startUsagePolling,
+  usageSnapshotMessages,
+} from '../../server/src/usageLimits.js';
 import {
   getProjectDirPath,
   launchNewTerminal,
@@ -132,6 +137,10 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
   // Cross-window layout sync
   layoutWatcher: JsonFileWatcher | null = null;
   private characterProfilesWatcher: { dispose(): void }; // characters.json, shared cross-process
+  /** Stops this process's usage endpoint poller (usageLimits.startUsagePolling). */
+  private readonly stopUsagePolling: () => void;
+  /** The panel's hold on that poller while it is open (the webview is privileged). */
+  private releaseUsagePolling: (() => void) | null = null;
 
   // Pixel Agents Server (hook event reception)
   private pixelAgentsServer: PixelAgentsServer | null = null;
@@ -169,6 +178,9 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     this.store.on('broadcast', (message) => {
       this.sendOrBuffer(message);
     });
+    // With Usage Bars on, the account usage endpoint is read now and then
+    // every minute while the panel is open.
+    this.stopUsagePolling = startUsagePolling((m) => this.store.broadcast({ ...m }));
 
     setTerminalAdapter(new VscodeTerminalAdapter());
 
@@ -475,6 +487,13 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     this.pendingBroadcasts = [];
     webviewView.webview.options = { enableScripts: true };
     webviewView.webview.html = getWebviewContent(webviewView.webview, this.extensionUri);
+    const releaseUsagePolling = holdUsagePolling();
+    this.releaseUsagePolling?.();
+    this.releaseUsagePolling = releaseUsagePolling;
+    webviewView.onDidDispose(() => {
+      releaseUsagePolling();
+      if (this.releaseUsagePolling === releaseUsagePolling) this.releaseUsagePolling = null;
+    });
 
     webviewView.webview.onDidReceiveMessage(async (message) => {
       if (message.type === 'launchAgent') {
@@ -1218,6 +1237,9 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
   }
 
   dispose() {
+    this.stopUsagePolling();
+    this.releaseUsagePolling?.();
+    this.releaseUsagePolling = null;
     this.pixelAgentsServer?.stop();
     this.pixelAgentsServer = null;
     this.runtime.dispose();

@@ -7,7 +7,7 @@
  * speculation.
  */
 
-import type { UsageWindow } from './messages.js';
+import type { UsageEndpointStatus, UsagePlanWindow, UsageWindow } from './messages.js';
 import type { TeamProvider } from './teamProvider.js';
 
 // ── Normalized Events (all provider types produce these) ──────
@@ -79,6 +79,13 @@ export interface ReportedUsage {
   sevenDay?: UsageWindow;
 }
 
+/** One read of the provider's usage endpoint: the windows it reported (the
+ *  5-hour and weekly ones also as a ReportedUsage, for the two main bars), or
+ *  why there was no answer. */
+export type PolledUsage =
+  | { status: 'ok'; usage: ReportedUsage; windows: UsagePlanWindow[] }
+  | { status: Exclude<UsageEndpointStatus, 'ok'> };
+
 /** One session's context as the CLI itself measures it (Claude: the status
  *  line's `context_window`), which the office's gauge prefers over its own
  *  transcript estimate. */
@@ -117,6 +124,12 @@ export interface UsageBridge {
   /** The reporting session's context from the same POST; null when it
    *  carries none (before the session's first response) or is malformed. */
   normalizeContext(raw: unknown): ReportedContext | null;
+  /** Optional second source: read the account's usage straight from the
+   *  provider's usage endpoint (Claude: the one `/usage` reads, with the CLI's
+   *  own OAuth token), which reports every window, not only what the status
+   *  line forwards. The server polls it while the bridge is installed and a
+   *  privileged office is connected. Never rejects. */
+  pollUsage?(): Promise<PolledUsage>;
 }
 
 /**

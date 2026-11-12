@@ -889,12 +889,17 @@ components:
 
     UsageLimits:
       description: |
-        The account's plan usage, as the provider's usage bridge last reported
-        it: sent on connect and whenever a report moves the numbers (or the
-        last one is a minute old). Reports only arrive while a CLI session is
-        open, so `updatedAt` says how fresh the numbers are; a window past its
+        The account's plan usage, from two sources: the provider's usage
+        bridge (Claude: the status line, which only forwards the 5-hour and
+        weekly windows) and, while Usage Bars is on, the provider's usage
+        endpoint (Claude: the same one `/usage` reads), polled every minute
+        while a privileged office is connected. Sent on connect and whenever
+        either moves the numbers (or the last word is a minute old).
+        `updatedAt` says how fresh the numbers are; a window past its
         `resetsAt` has reset since. No windows = nothing reported yet.
-        Privileged connections only: it is the operator's account data.
+        `fiveHour`/`sevenDay` are the freshest of both sources; `windows` is
+        the endpoint's last answer, every window it reports. Privileged
+        connections only: it is the operator's account data.
       type: object
       additionalProperties: false
       required: [type, providerId]
@@ -910,6 +915,19 @@ components:
         updatedAt:
           type: number
           description: When the last report arrived (epoch milliseconds).
+        windows:
+          type: array
+          description: >-
+            Every window the usage endpoint reported in its last answer, in
+            its order. Absent when the endpoint never answered. A list with
+            no `session` window means the account has no 5-hour window.
+          items:
+            $ref: '#/components/schemas/UsagePlanWindow'
+        polledAt:
+          type: number
+          description: When the usage endpoint last answered (epoch milliseconds).
+        endpointStatus:
+          $ref: '#/components/schemas/UsageEndpointStatus'
 
     HooksConsentRequest:
       description: |
@@ -1912,6 +1930,53 @@ components:
         resetsAt:
           type: number
           description: When the window resets (Unix epoch SECONDS).
+
+    UsagePlanWindow:
+      description: |
+        One window of the account's plan as the usage endpoint states it: the
+        5-hour window (`session`), the weekly one (`weekly`), a model's share
+        of the weekly budget (`scoped`, e.g. Opus or Fable) or extra usage
+        credits (`overage`).
+      type: object
+      additionalProperties: false
+      required: [key, label, group, usedPercentage]
+      properties:
+        key:
+          type: string
+          description: Stable id of the window (the endpoint's kind, plus the model for a scoped one).
+        label:
+          type: string
+          description: Short name for people ("Weekly", "Fable", "Extra").
+        group:
+          $ref: '#/components/schemas/UsagePlanWindowGroup'
+        usedPercentage:
+          type: number
+          description: Share of the window used, 0-100 (a scoped window - of its own allowance).
+        resetsAt:
+          type: number
+          description: When the window resets (Unix epoch SECONDS). Absent when the endpoint gives no time.
+        usedPercentOfWeekly:
+          type: number
+          description: A scoped window - how much of the whole weekly budget it has used.
+        allowancePercentOfWeekly:
+          type: number
+          description: A scoped window - how much of the whole weekly budget it may use.
+        locked:
+          type: boolean
+          description: The endpoint says the window is blocked.
+
+    UsagePlanWindowGroup:
+      description: What kind of window a UsagePlanWindow is.
+      type: string
+      enum: [session, weekly, scoped, overage]
+
+    UsageEndpointStatus:
+      description: >-
+        How the last read of the usage endpoint went: `ok`, `offline` (no
+        answer, a timeout or an unexpected reply) or `unauthorized` (no
+        usable token, or the endpoint refused it).
+      type: string
+      enum: [ok, offline, unauthorized]
 
     AgentSeatMeta:
       description: |
