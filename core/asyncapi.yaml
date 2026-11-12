@@ -1160,6 +1160,13 @@ components:
         title:
           type: string
           description: The title the coding agent gave the conversation (a user rename wins), else its last prompt.
+        color:
+          type: string
+          description: >-
+            The colour the user marked the session with, as the CLI names it,
+            lower case (Claude Code's /color), the same as agentSessionInfo.color:
+            the title shows tinted with it, as the label over the character is.
+            Absent when the session has none.
         updatedAt:
           type: number
           description: When the transcript last changed, in ms since the epoch.

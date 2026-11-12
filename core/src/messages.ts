@@ -492,6 +492,7 @@ export interface DirectoryConversations {
 export interface Conversation {
   sessionId: string;
   title: string;
+  color?: string;
   updatedAt: number;
   palette?: number;
   repeat?: number;

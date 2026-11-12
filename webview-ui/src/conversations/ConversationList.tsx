@@ -20,6 +20,7 @@ import { prefersReducedMotion } from '../hooks/usePresence.js';
 import { liveElsewhereBadge, liveElsewhereWarning, resumeNeedsConfirm } from './liveElsewhere.js';
 import { recentAcross } from './recent.js';
 import { timeAgo } from './timeAgo.js';
+import { conversationTitleColor } from './titleColor.js';
 import { type ConversationLimits, useConversations } from './useConversations.js';
 
 interface ConversationListProps {
@@ -412,7 +413,15 @@ export function ConversationRow({ conversation, where, onPress, statusFor, now, 
       {/* leading-none: the pixel font's line height opens a wide gap
           between the title and its Directory. */}
       <span className="flex-1 min-w-0 flex flex-col leading-none">
-        <span className="text-sm overflow-hidden text-ellipsis whitespace-nowrap">{title}</span>
+        {/* Tinted with the session's /color, as the label over its character
+            is: the same colour means the same session everywhere. */}
+        <span
+          data-testid="conversation-title"
+          className="text-sm overflow-hidden text-ellipsis whitespace-nowrap"
+          style={{ color: conversationTitleColor(conversation) }}
+        >
+          {title}
+        </span>
         {where && (
           <span className="-mt-1 text-2xs text-text-muted overflow-hidden text-ellipsis whitespace-nowrap">
             {where}

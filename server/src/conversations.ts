@@ -261,21 +261,32 @@ interface TranscriptFile {
   mtimeMs: number;
 }
 
-/**
- * Titles already read, by transcript path, with the size and mtime they were
- * read at. A title is a function of the file, so an entry is used only while
- * both still match (any write changes them). Untitled results are kept too, or
- * every untitled session would be re-read on each listing. A listing drops
- * the entries of transcripts it no longer finds (a search shares them).
- */
-const titleCache = new Map<string, { size: number; mtimeMs: number; title: string | undefined }>();
+/** What the listing shows of a transcript besides its look: its title and the
+ *  colour the user marked its session with (/color; HookProvider.sessionInfo). */
+interface TranscriptLabel {
+  title: string | undefined;
+  color: string | undefined;
+}
 
-function cachedTitle(provider: HookProvider, file: TranscriptFile): string | undefined {
+/**
+ * Titles (and colours) already read, by transcript path, with the size and
+ * mtime they were read at. Both are a function of the file, so an entry is
+ * used only while both still match (any write changes them). Untitled results
+ * are kept too, or every untitled session would be re-read on each listing. A
+ * listing drops the entries of transcripts it no longer finds (a search shares
+ * them).
+ */
+const titleCache = new Map<string, TranscriptLabel & { size: number; mtimeMs: number }>();
+
+function cachedLabel(provider: HookProvider, file: TranscriptFile): TranscriptLabel {
   const hit = titleCache.get(file.path);
-  if (hit && hit.size === file.size && hit.mtimeMs === file.mtimeMs) return hit.title;
-  const title = provider.conversationTitle?.(file.path);
-  titleCache.set(file.path, { size: file.size, mtimeMs: file.mtimeMs, title });
-  return title;
+  if (hit && hit.size === file.size && hit.mtimeMs === file.mtimeMs) return hit;
+  const label: TranscriptLabel = {
+    title: provider.conversationTitle?.(file.path),
+    color: provider.sessionInfo?.(file.path).color,
+  };
+  titleCache.set(file.path, { ...label, size: file.size, mtimeMs: file.mtimeMs });
+  return label;
 }
 
 /** Every transcript of a Directory, newest first. */
@@ -297,12 +308,14 @@ function conversationOf(
 ): Conversation | null {
   const sessionId = path.basename(file.path, transcriptSuffix(provider.sessionFilePattern));
   const running = live.get(sessionId);
-  const title = cachedTitle(provider, file) ?? (running && NEW_CONVERSATION_TITLE);
+  const label = cachedLabel(provider, file);
+  const title = label.title ?? (running && NEW_CONVERSATION_TITLE);
   if (!title) return null;
   const look = running ?? looks[sessionId];
   return {
     sessionId,
     title,
+    ...(label.color ? { color: label.color } : {}),
     updatedAt: file.mtimeMs,
     palette: look?.palette,
     repeat: look?.repeat,

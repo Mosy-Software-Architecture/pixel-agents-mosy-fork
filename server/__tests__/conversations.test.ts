@@ -262,6 +262,28 @@ describe('conversations', () => {
     expect(all.more).toBeUndefined();
   });
 
+  it("carries each session's /color, for the title's tint, and none for a session without one", () => {
+    transcript(
+      uuid(1),
+      line({ type: 'ai-title', aiTitle: 'Red one' }) +
+        line({ type: 'agent-color', agentColor: 'red', sessionId: uuid(1) }),
+      60_000,
+    );
+    transcript(uuid(2), line({ type: 'ai-title', aiTitle: 'Plain' }), 120_000);
+    transcript(
+      uuid(3),
+      line({ type: 'ai-title', aiTitle: 'Reset' }) +
+        line({ type: 'agent-color', agentColor: 'blue' }) +
+        line({ type: 'agent-color', agentColor: 'default' }),
+      180_000,
+    );
+    const [listed] = listConversations([directory], provider, new Map());
+    const byTitle = new Map(listed.conversations.map((c) => [c.title, c]));
+    expect(byTitle.get('Red one')?.color).toBe('red');
+    expect(byTitle.get('Plain')).not.toHaveProperty('color');
+    expect(byTitle.get('Reset')).not.toHaveProperty('color');
+  });
+
   it('lists as many past ones as a Directory asks for, and says whether older ones exist', () => {
     for (let i = 1; i <= 8; i++) {
       transcript(uuid(i), line({ type: 'ai-title', aiTitle: `Chat ${i}` }), i * 60_000);
@@ -340,6 +362,17 @@ describe('conversations', () => {
       expect(more).toBe(false);
       expect(search('LOGIN bug').results).toHaveLength(1);
       expect(search('login nope').results).toHaveLength(0);
+    });
+
+    it("carries a found session's /color", () => {
+      transcript(
+        uuid(5),
+        line({ type: 'ai-title', aiTitle: 'Login colours' }) +
+          line({ type: 'agent-color', agentColor: 'purple' }),
+        300_000,
+      );
+      const found = search('colours').results.map((r) => r.conversation);
+      expect(found).toEqual([expect.objectContaining({ title: 'Login colours', color: 'purple' })]);
     });
 
     it('lists every titled one for an empty query, a page at a time', () => {
@@ -438,6 +471,32 @@ describe('conversations', () => {
       fs.utimesSync(file, 61, 61);
       expect(titles(counting)).toEqual(['Later']);
       expect(reads()).toBe(3);
+    });
+
+    it('reads the colour once per change too, beside the title', () => {
+      let colorReads = 0;
+      const counting: HookProvider = {
+        ...provider,
+        sessionInfo: (file: string) => {
+          colorReads++;
+          return sessionInfo(file);
+        },
+      };
+      const file = transcript(
+        uuid(1),
+        line({ type: 'ai-title', aiTitle: 'Tinted' }) +
+          line({ type: 'agent-color', agentColor: 'red' }),
+        60_000,
+      );
+      const colors = () =>
+        listConversations([directory], counting, new Map())[0].conversations.map((c) => c.color);
+      expect(colors()).toEqual(['red']);
+      expect(colors()).toEqual(['red']);
+      expect(colorReads).toBe(1);
+      fs.appendFileSync(file, line({ type: 'agent-color', agentColor: 'green' }));
+      fs.utimesSync(file, 61, 61);
+      expect(colors()).toEqual(['green']);
+      expect(colorReads).toBe(2);
     });
 
     it('forgets transcripts a listing no longer looked at', () => {
