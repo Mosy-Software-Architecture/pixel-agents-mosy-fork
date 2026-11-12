@@ -24,6 +24,7 @@ import { ContextBar } from '../ContextBar.js';
 import { contextLeft } from '../contextGauge.js';
 import { shownDirectoryName } from '../directoryNames.js';
 import type { OfficeState } from '../engine/officeState.js';
+import { pendingAckOf } from '../pendingAck.js';
 import { overlayProjection } from '../projection.js';
 import { agentSessionInfo, remoteHostLabel, sessionColor } from '../sessionLabel.js';
 import { getCachedSprite } from '../sprites/spriteCache.js';
@@ -160,23 +161,30 @@ export function ToolOverlay({
         const isSelected = selectedId === id;
         const isHovered = hoveredId === id;
         const isSub = ch.isSubagent;
+        // An agent that rang and hasn't been acknowledged keeps its bubble
+        // (office/pendingAck.ts): the permission dots, or the checkmark of its
+        // finished turn, at full strength until the user looks. The label's
+        // text still follows the turn end (Done vs "Waiting for input").
+        const pending = pendingAckOf(id);
+        const bubbleType = pending ?? ch.bubbleType;
+        const awaitingInput = ch.waitingAwaitingInput ?? false;
 
         // Speech bubble (permission dots / done checkmark) — rendered here in
         // the DOM, above the label panels (OVERLAY_BUBBLE_Z_INDEX over the label panels), for every
         // character regardless of label visibility. Mirrors the geometry the
         // canvas renderer used. The idle "Waiting for input" state speaks
-        // through its label, not a bubble.
+        // through its label, not a bubble, unless it is still pending.
         let bubbleNode = null;
         // Screen y of the bubble's top edge, when one shows: the label stacks above it.
         let bubbleTop: number | null = null;
-        if (ch.bubbleType && !(ch.bubbleType === 'waiting' && ch.waitingAwaitingInput)) {
+        if (bubbleType && (pending || !(bubbleType === 'waiting' && awaitingInput))) {
           const cachedBubble = getCachedSprite(
-            ch.bubbleType === 'permission' ? BUBBLE_PERMISSION_SPRITE : BUBBLE_WAITING_SPRITE,
+            bubbleType === 'permission' ? BUBBLE_PERMISSION_SPRITE : BUBBLE_WAITING_SPRITE,
             zoom,
           );
           const bubbleSittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0;
           const alpha =
-            ch.bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC
+            !pending && bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC
               ? ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
               : 1;
           bubbleTop =
@@ -223,7 +231,9 @@ export function ToolOverlay({
         // hovered or selected, even with always-show on (the lead's label
         // already names the subtask), and a hovered sub-agent's lead hides
         // its own so the sub's isn't covered.
-        const isDone = ch.bubbleType === 'waiting' && !ch.waitingAwaitingInput;
+        // A pending Done (office/pendingAck.ts) lasts until acknowledged, so it
+        // keeps its label (stacked above the checkmark) like any idle agent.
+        const isDone = !pending && bubbleType === 'waiting' && !awaitingInput;
         const givesWay = (isSub && !isSelected && !isHovered) || id === hoveredSubParentId;
         if ((isDone && !isSelected && !isHovered) || givesWay) {
           return (
@@ -240,10 +250,10 @@ export function ToolOverlay({
         }
 
         // Get activity text
-        const hasWaitingBubble = ch.bubbleType === 'waiting';
-        const subHasPermission = isSub && ch.bubbleType === 'permission';
+        const hasWaitingBubble = bubbleType === 'waiting';
+        const subHasPermission = isSub && bubbleType === 'permission';
         let activityText: string;
-        if (hasWaitingBubble && ch.waitingAwaitingInput) {
+        if (hasWaitingBubble && awaitingInput) {
           // Idle, waiting on the user -> dedicated label. A finished turn (Stop)
           // shows only the checkmark and falls through to the normal idle text.
           activityText = WAITING_INPUT_ACTIVITY_TEXT;
@@ -260,13 +270,7 @@ export function ToolOverlay({
             activityText = activeRow?.status ?? (sub?.label || 'Subtask');
           }
         } else {
-          activityText = getActivityText(
-            id,
-            agentTools,
-            ch.isActive,
-            ch.bubbleType,
-            ch.waitingAwaitingInput ?? false,
-          );
+          activityText = getActivityText(id, agentTools, ch.isActive, bubbleType, awaitingInput);
         }
 
         // Determine dot color
@@ -274,7 +278,7 @@ export function ToolOverlay({
         const hasPermission = subHasPermission || tools?.some((t) => t.permissionWait && !t.done);
         const hasActiveTools = tools?.some((t) => !t.done);
         const isActive = ch.isActive;
-        const hasWaiting = ch.bubbleType === 'waiting';
+        const hasWaiting = bubbleType === 'waiting';
 
         let dotColor: string | null = null;
         if (hasPermission || hasWaiting) {

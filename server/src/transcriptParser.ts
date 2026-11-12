@@ -440,8 +440,14 @@ export function processTranscriptLine(
           clearAgentActivity(agent, agentId, agents, permissionTimers);
           agent.hadToolsInTurn = false;
         }
-      } else if (typeof content === 'string' && content.trim()) {
-        // New user text prompt — new turn starting
+      } else if (
+        typeof content === 'string' &&
+        content.trim() &&
+        !hookProvider?.startsNoTurn?.(record)
+      ) {
+        // New user text prompt — new turn starting. A local command (/model,
+        // /color, !cmd) or its output is user text too, but no model turn
+        // follows it, so it would leave the agent "working" for good.
         cancelWaitingTimer(agentId, waitingTimers);
         clearAgentActivity(agent, agentId, agents, permissionTimers);
         agent.hadToolsInTurn = false;

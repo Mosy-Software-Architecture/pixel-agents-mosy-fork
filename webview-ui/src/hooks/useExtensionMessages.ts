@@ -19,6 +19,7 @@ import { setGhostHeadlessAgents as setRendererGhostHeadlessAgents } from '../off
 import { setFloorSprites } from '../office/floorTiles.js';
 import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js';
+import { applyPendingAckMessage, clearPendingAck } from '../office/pendingAck.js';
 import { clearAgentSessionInfo, setAgentSessionInfo } from '../office/sessionLabel.js';
 import { setCarpetSprites } from '../office/sprites/carpetTiles.js';
 import { setPetTemplates } from '../office/sprites/petSpriteData.js';
@@ -303,6 +304,7 @@ export function useExtensionMessages(
       os.removeAgent(id);
       clearAgentContextUsed(id);
       clearAgentSessionInfo(id);
+      clearPendingAck(id);
     };
 
     // A dropped socket (a phone's screen going off, a server restart) loses
@@ -351,6 +353,8 @@ export function useExtensionMessages(
         });
       }
 
+      // Who rang and hasn't been looked at yet (office/pendingAck.ts).
+      applyPendingAckMessage(msg);
       // Usage bars (usage/usageStore.ts): the bridge's state and the plan usage.
       if (handleUsageMessage(msg)) return;
       // The cast (characters/castMessages.ts): profiles, items, looks, external sprites.

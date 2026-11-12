@@ -17,7 +17,7 @@ import { isPersistedSpawnChild, restoredAgentInit } from './agentPersistence.js'
 import { createAgentState } from './agentState.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { pausedSpawnFate } from './backgroundSpawns.js';
-import { PAUSED_SPAWN_CHECK_INTERVAL_MS } from './constants.js';
+import { PAUSED_SPAWN_CHECK_INTERVAL_MS, QUIET_TURN_CHECK_INTERVAL_MS } from './constants.js';
 import { DismissalTracker } from './dismissalTracker.js';
 import {
   adoptExternalSessionFromHook,
@@ -43,7 +43,7 @@ import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { PathSet, pathsMatch } from './pathKey.js';
 import { SessionRouter } from './sessionRouter.js';
 import { SubagentWatch } from './subagentWatch.js';
-import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
+import { cancelPermissionTimer, cancelWaitingTimer, endQuietTurns } from './timerManager.js';
 import {
   endBackgroundSpawn,
   setBackgroundAgentCompletedCallback,
@@ -78,6 +78,7 @@ export class AgentRuntime {
   private externalScanTimer: ReturnType<typeof setInterval> | null = null;
   private staleCheckTimer: ReturnType<typeof setInterval> | null = null;
   private pausedSpawnTimer: ReturnType<typeof setInterval> | null = null;
+  private quietTurnTimer: ReturnType<typeof setInterval> | null = null;
 
   // Configuration refs (mutable, shared with scanners)
   readonly watchAllSessions = { current: false };
@@ -483,6 +484,11 @@ export class AgentRuntime {
       () => this.endQuietPausedSpawns(),
       PAUSED_SPAWN_CHECK_INTERVAL_MS,
     );
+    // A heuristic turn that ended without a turn_duration (timerManager's isQuietTurn).
+    this.quietTurnTimer = setInterval(
+      () => endQuietTurns(this.store, this.waitingTimers),
+      QUIET_TURN_CHECK_INTERVAL_MS,
+    );
   }
 
   /**
@@ -617,6 +623,10 @@ export class AgentRuntime {
     if (this.pausedSpawnTimer) {
       clearInterval(this.pausedSpawnTimer);
       this.pausedSpawnTimer = null;
+    }
+    if (this.quietTurnTimer) {
+      clearInterval(this.quietTurnTimer);
+      this.quietTurnTimer = null;
     }
 
     for (const id of this.store.keys()) this.stopWatching(id);
