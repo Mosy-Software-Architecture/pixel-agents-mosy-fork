@@ -95,7 +95,7 @@ The row of agent cards: one card per running main agent (teammates and sub-agent
 _Avoid_: agent list, tabs, roster (that's the characters to launch as)
 
 **Roster**:
-The characters an agent can be launched as, one card each, most recently launched first — opened by the arrow beside the New agent button. Picking one launches a new agent wearing it; its `+ New` adds a character to the cast (it launches nothing).
+The characters an agent can be launched as, one card each, most recently launched first — opened by the arrow beside the New agent button. Picking one launches a new agent wearing it; its `+ New` adds a character to the cast (it launches nothing). With an agent selected, a card's Wear button dresses that agent in the character instead (it launches nothing either).
 _Avoid_: agent picker, agents (it lists characters, not running agents), card bar
 
 **New agent**:

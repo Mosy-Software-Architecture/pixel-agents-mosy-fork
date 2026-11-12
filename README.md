@@ -133,7 +133,7 @@ Your workspace folders (VS Code) or the directory the CLI started in (standalone
 
 Open the roster from the arrow beside **+** and press a character's pencil (or **+ New**) to open the **Characters** view. Dress a character from the wardrobe tabs, recolour any piece, and touch up pixels in the editor; a piece you redraw can be saved as a custom item for the rest of the cast. Nothing changes in the office until you press **Save**. Characters export as a PNG or a config file, and the whole roster as a zip.
 
-Picking a character in the roster and then a Directory launches an agent as that character. In a Directory's settings you can also list its default characters, so its agents are recognisable at a glance.
+Picking a character in the roster and then a Directory launches an agent as that character. In a Directory's settings you can also list its default characters, so its agents are recognisable at a glance. With an agent selected in the office, each roster card also shows **Wear**: it dresses that agent in the character, adopted agents included, and the agent keeps it across reloads and resumes.
 
 ## Where This Is Going
 
