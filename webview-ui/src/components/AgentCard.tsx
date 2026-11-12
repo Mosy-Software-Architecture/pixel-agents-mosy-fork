@@ -131,11 +131,16 @@ function useCardTitle(agentId: number, palette: number): string {
     subscribeAgentSessionInfo,
     () => agentSessionInfo(agentId)?.title,
   );
+  const host = useSyncExternalStore(
+    subscribeAgentSessionInfo,
+    () => agentSessionInfo(agentId)?.host,
+  );
   const profile = cast.profiles[palette];
   return cardTitleLines({
     agentId,
     // the roster card's name for it
     characterName: profile ? characterLabel(profile, palette) : undefined,
     sessionTitle,
+    host,
   }).join('\n');
 }

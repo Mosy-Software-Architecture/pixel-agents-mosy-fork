@@ -21,6 +21,8 @@ interface ConversationSidebarProps {
   onResume: (sessionId: string, directoryPath: string) => void;
   /** A running conversation pressed: go to its agent, as its card would. */
   onOpenAgent: (agentId: number) => void;
+  /** A remote host's session pressed: open it. */
+  onOpenRemote: (host: string, sessionId: string) => void;
   statusFor: (agentId: number) => TabStatus | null;
   isSettingsOpen: boolean;
   onToggleSettings: () => void;
@@ -32,6 +34,7 @@ export function ConversationSidebar({
   open,
   onResume,
   onOpenAgent,
+  onOpenRemote,
   statusFor,
   isSettingsOpen,
   onToggleSettings,
@@ -66,6 +69,7 @@ export function ConversationSidebar({
           open
           onResume={onResume}
           onOpenAgent={onOpenAgent}
+          onOpenRemote={onOpenRemote}
           statusFor={statusFor}
           onSearch={onSearch}
         />

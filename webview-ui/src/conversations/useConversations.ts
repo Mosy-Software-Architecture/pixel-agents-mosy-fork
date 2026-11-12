@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { DirectoryConversations } from '../../../core/src/messages.js';
+import type {
+  DirectoryConversations,
+  RemoteHostConversations,
+} from '../../../core/src/messages.js';
 import {
   CONVERSATIONS_REFRESH_DEBOUNCE_MS,
   CONVERSATIONS_REFRESH_INTERVAL_MS,
@@ -22,6 +25,8 @@ const REFRESH_ON = new Set([
 
 export interface ConversationList {
   directories: DirectoryConversations[];
+  /** Each remote host's sessions (config.json `remoteHosts`), once it answered. */
+  remoteHosts: RemoteHostConversations[];
   /** When it arrived (ms): the "ago" times are told from it. */
   receivedAt: number;
 }
@@ -58,7 +63,11 @@ export function useConversations(
     };
     const unsubscribe = transport.onMessage((msg) => {
       if (msg.type === 'conversationsLoaded') {
-        setList({ directories: msg.directories, receivedAt: Date.now() });
+        setList({
+          directories: msg.directories,
+          remoteHosts: msg.remoteHosts ?? [],
+          receivedAt: Date.now(),
+        });
       } else if (REFRESH_ON.has(msg.type)) {
         clearTimeout(timer);
         timer = setTimeout(request, CONVERSATIONS_REFRESH_DEBOUNCE_MS);
@@ -74,6 +83,13 @@ export function useConversations(
   }, [open, limitsKey]);
 
   return list;
+}
+
+/** Open a remote host's session: the server opens a terminal on the host's
+ *  tmux, with a character for it while it is open (an agentCreated follows,
+ *  then its terminal). */
+export function openRemoteConversation(host: string, sessionId: string): void {
+  transport.send({ type: 'openRemoteConversation', host, sessionId });
 }
 
 /** Resume a past conversation: the server relaunches it as the character its

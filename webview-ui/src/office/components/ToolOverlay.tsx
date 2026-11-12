@@ -363,6 +363,16 @@ export function ToolOverlay({
                       {directoryName}
                     </span>
                   )}
+                  {/* A remote host's session: where it runs, whether or not
+                      Directory names show. */}
+                  {session?.host && (
+                    <span
+                      className="text-2xs leading-none overflow-hidden text-ellipsis block text-text-muted"
+                      data-testid="agent-remote-host"
+                    >
+                      {`@${session.host}`}
+                    </span>
+                  )}
                 </div>
                 {isSelected && !isSub && (
                   <Button

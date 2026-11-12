@@ -1,7 +1,11 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
-import type { Conversation, DirectoryConversations } from '../../../core/src/messages.js';
+import type {
+  Conversation,
+  DirectoryConversations,
+  RemoteHostConversations,
+} from '../../../core/src/messages.js';
 import type { TabStatus } from '../components/AgentCard.js';
 import { CharacterMugShot } from '../components/CharacterMugShot.js';
 import { STATUS_DOT } from '../components/statusDot.js';
@@ -21,6 +25,7 @@ import { useShowDirectoryNames } from '../hooks/useShowDirectoryNames.js';
 import { shownDirectoryName } from '../office/directoryNames.js';
 import { liveElsewhereBadge, liveElsewhereWarning, resumeNeedsConfirm } from './liveElsewhere.js';
 import { recentAcross } from './recent.js';
+import { remoteHostNote, remoteRowTitle, rowMark } from './remote.js';
 import { timeAgo } from './timeAgo.js';
 import { conversationTitleColor } from './titleColor.js';
 import { type ConversationLimits, useConversations } from './useConversations.js';
@@ -32,6 +37,8 @@ interface ConversationListProps {
   onResume: (sessionId: string, directoryPath: string) => void;
   /** A running one pressed: go to its agent (as its card would). */
   onOpenAgent: (agentId: number) => void;
+  /** A remote host's session pressed: open it (absent: remote hosts aren't listed). */
+  onOpenRemote?: (host: string, sessionId: string) => void;
   /** A running conversation's status dot, the same as its agent card's. */
   statusFor: (agentId: number) => TabStatus | null;
   /** Rows sized for a finger (the phone's panel). */
@@ -54,12 +61,14 @@ export interface ConversationSearchScope {
  * this viewer opens it; remembered per browser). Titled as the coding agent
  * titles them, each with a mug shot of the character its agent wore. One an
  * agent in the office is running shows its status dot, and pressing it goes
- * to that agent; pressing a past one resumes it.
+ * to that agent; pressing a past one resumes it. Last, each remote host's
+ * sessions (remote.ts), pressing one opens it.
  */
 export function ConversationList({
   open,
   onResume,
   onOpenAgent,
+  onOpenRemote,
   statusFor,
   roomy = false,
   onSearch,
@@ -146,7 +155,62 @@ export function ConversationList({
           }
         />
       ))}
+      {onOpenRemote &&
+        list.remoteHosts.map((host) => (
+          <RemoteHostSection
+            key={host.name}
+            host={host}
+            now={now}
+            statusFor={statusFor}
+            roomy={roomy}
+            onPress={(conversation) =>
+              conversation.agentId !== undefined
+                ? onOpenAgent(conversation.agentId)
+                : onOpenRemote(host.name, conversation.sessionId)
+            }
+          />
+        ))}
     </div>
+  );
+}
+
+/** A remote host's sessions under its name: running ones marked with the
+ *  house in their status, or why there are none (offline, none lately). */
+function RemoteHostSection({
+  host,
+  now,
+  statusFor,
+  roomy,
+  onPress,
+}: {
+  host: RemoteHostConversations;
+  now: number;
+  statusFor: ConversationListProps['statusFor'];
+  roomy: boolean;
+  onPress: (conversation: Conversation) => void;
+}) {
+  const note = remoteHostNote(host);
+  return (
+    <section data-testid="remote-host" data-host={host.name} className="pb-6">
+      <SectionHeading>{host.name}</SectionHeading>
+      {note ? (
+        <p data-testid="remote-host-note" className="m-0 px-10 py-2 text-xs text-text-muted">
+          {note}
+        </p>
+      ) : (
+        host.conversations.map((conversation) => (
+          <ConversationRow
+            key={conversation.sessionId}
+            conversation={conversation}
+            remoteHost={host.name}
+            onPress={() => onPress(conversation)}
+            statusFor={statusFor}
+            now={now}
+            roomy={roomy}
+          />
+        ))
+      )}
+    </section>
   );
 }
 
@@ -379,6 +443,8 @@ export interface RowProps {
   statusFor: ConversationListProps['statusFor'];
   now: number;
   roomy: boolean;
+  /** The remote host it runs on: a running one is marked with the house. */
+  remoteHost?: string;
 }
 
 /**
@@ -393,11 +459,12 @@ export function ConversationRow({
   statusFor,
   now,
   roomy,
+  remoteHost,
 }: RowProps) {
   const { title, updatedAt, palette, repeat, agentId, liveElsewhere } = conversation;
+  const mark = rowMark(conversation, remoteHost !== undefined, statusFor);
   // Settings → Show Directory Names off: no Directory line (one Directory says nothing).
   const where = shownDirectoryName(directoryName, useShowDirectoryNames());
-  const status = agentId !== undefined ? statusFor(agentId) : null;
   const [confirming, setConfirming] = useState(false);
   const needsConfirm = resumeNeedsConfirm(conversation);
   const row = (
@@ -406,7 +473,13 @@ export function ConversationRow({
       data-testid="conversation-row"
       onClick={needsConfirm ? () => setConfirming((open) => !open) : onPress}
       aria-expanded={needsConfirm ? confirming : undefined}
-      title={agentId !== undefined ? `Go to "${title}"` : `Resume "${title}"`}
+      title={
+        remoteHost !== undefined
+          ? remoteRowTitle(conversation, remoteHost)
+          : agentId !== undefined
+            ? `Go to "${title}"`
+            : `Resume "${title}"`
+      }
       className={`w-full flex items-center gap-8 px-10 ${roomy ? 'py-8' : where ? 'py-3' : 'py-5'} bg-transparent border-none rounded-none cursor-pointer text-left text-text hover:bg-btn-bg`}
     >
       <span className="shrink-0 flex" style={{ width: MUGSHOT_CROP_SIDE_PX }}>
@@ -453,8 +526,9 @@ export function ConversationRow({
         )}
       </span>
       <RowTrail
-        running={agentId !== undefined}
-        status={status}
+        running={mark !== null}
+        status={mark?.status ?? null}
+        icon={mark?.icon}
         at={updatedAt}
         now={now}
         testId="conversation-status"
@@ -511,21 +585,24 @@ interface RowTrailProps {
   push?: boolean;
   /** The status dot's test id. */
   testId?: string;
+  /** The status's icon: the round dot, or the house of a remote host's row. */
+  icon?: 'dot' | 'remote';
 }
 
 /**
  * A row's end: running, its agent card's status colour in place of the time,
  * as a round dot (a square one reads as a stop button); else how long ago.
  */
-function RowTrail({ running, status, at, now, push = false, testId }: RowTrailProps) {
+function RowTrail({ running, status, at, now, push = false, testId, icon = 'dot' }: RowTrailProps) {
   if (running) {
     return (
       <span
         data-testid={testId}
+        data-icon={icon}
         aria-label={status ?? 'running'}
         className={`shrink-0 flex ${push ? 'ml-auto ' : ''}mx-4 ${status ? STATUS_DOT[status] : 'text-text-muted'}`}
       >
-        <PixelIcon name="dot" scale={1} />
+        <PixelIcon name={icon} scale={1} />
       </span>
     );
   }
