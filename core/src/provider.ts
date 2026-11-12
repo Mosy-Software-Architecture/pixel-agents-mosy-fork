@@ -260,6 +260,11 @@ export interface HookProvider {
   /** One transcript record's news about its session, or null when it carries
    *  none (most records). */
   sessionInfoFromRecord?(record: unknown): SessionInfoRecord | null;
+  /** Whether a user record is NOT a prompt to the model (a local command and
+   *  its output, a compaction summary): the heuristic parser then starts no
+   *  turn for it, since no turn end would ever follow. Undefined = every user
+   *  text record starts a turn. */
+  startsNoTurn?(record: unknown): boolean;
   /** The sessions of this CLI running right now on this host, in any terminal
    *  (the office's own included), so the sidebar can warn before resuming one
    *  that is still open elsewhere. Undefined = this CLI keeps no such record. */

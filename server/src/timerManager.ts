@@ -62,9 +62,10 @@ export function clearAgentActivity(
 /**
  * A heuristic agent whose turn went quiet: still marked active, no foreground
  * tool running, nothing written for QUIET_TURN_IDLE_MS. Its turn ended with no
- * turn_duration to say so (a local command like /model or /color starts no
- * model turn; an interrupted turn writes none), so it would read "working"
- * until its next turn. Hook-delivered agents are left to their hooks.
+ * turn_duration to say so (an interrupted turn writes none), so it would read
+ * "working" until its next turn. A fallback: local commands, the common case,
+ * start no turn at all (HookProvider.startsNoTurn). Hook-delivered agents are
+ * left to their hooks.
  */
 export function isQuietTurn(agent: AgentState, now: number): boolean {
   if (agent.hookDelivered || agent.isWaiting || !agent.turnActive) return false;

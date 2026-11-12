@@ -162,11 +162,12 @@ export function ToolOverlay({
         const isHovered = hoveredId === id;
         const isSub = ch.isSubagent;
         // An agent that rang and hasn't been acknowledged keeps its bubble
-        // (office/pendingAck.ts): the permission dots, or the checkmark for a
-        // turn waiting on input, at full strength until the user looks.
+        // (office/pendingAck.ts): the permission dots, or the checkmark of its
+        // finished turn, at full strength until the user looks. The label's
+        // text still follows the turn end (Done vs "Waiting for input").
         const pending = pendingAckOf(id);
         const bubbleType = pending ?? ch.bubbleType;
-        const awaitingInput = pending === 'waiting' || (ch.waitingAwaitingInput ?? false);
+        const awaitingInput = ch.waitingAwaitingInput ?? false;
 
         // Speech bubble (permission dots / done checkmark) — rendered here in
         // the DOM, above the label panels (OVERLAY_BUBBLE_Z_INDEX over the label panels), for every
@@ -230,7 +231,9 @@ export function ToolOverlay({
         // hovered or selected, even with always-show on (the lead's label
         // already names the subtask), and a hovered sub-agent's lead hides
         // its own so the sub's isn't covered.
-        const isDone = bubbleType === 'waiting' && !awaitingInput;
+        // A pending Done (office/pendingAck.ts) lasts until acknowledged, so it
+        // keeps its label (stacked above the checkmark) like any idle agent.
+        const isDone = !pending && bubbleType === 'waiting' && !awaitingInput;
         const givesWay = (isSub && !isSelected && !isHovered) || id === hoveredSubParentId;
         if ((isDone && !isSelected && !isHovered) || givesWay) {
           return (

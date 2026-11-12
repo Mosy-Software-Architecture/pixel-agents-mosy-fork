@@ -1,12 +1,11 @@
 /**
  * Agents that rang for the user and haven't been looked at yet: a turn that
- * ended waiting on input (`agentStatus` waiting with `awaitingInput`), or a
- * permission prompt. While pending, the character keeps its bubble
- * (ToolOverlay) and the agent's card a ring (AgentCard), so after the chime
- * the office still says who rang. Cleared when the user acknowledges it
- * (clicks the character or the card, or its terminal is shown) or when the
- * agent moves on (a tool or a turn starts). A finished turn that isn't
- * waiting on input (Stop) is not pending: its checkmark fades as before.
+ * ended (`agentStatus` waiting: Stop, or idle waiting on input) or a
+ * permission prompt — every time the chime sounds. While pending, the
+ * character keeps its bubble (ToolOverlay) and the agent's card a ring
+ * (AgentCard), so after the chime the office still says who rang. Cleared
+ * when the user acknowledges it (clicks the character or the card, or its
+ * terminal is shown) or when the agent moves on (a tool or a turn starts).
  */
 
 /** What the agent is waiting on: the bubble kept over its character. */
@@ -57,7 +56,9 @@ export function pendingAckChange(msg: AgentMessage): PendingAck | 'clear' | null
   switch (msg.type) {
     case 'agentStatus':
       if (msg.status === 'active') return 'clear';
-      return msg.status === 'waiting' && msg.awaitingInput === true ? 'waiting' : null;
+      // A live turn end always says whether it awaits input; the status a
+      // connect replays (agentActivityResend) doesn't, and rings no one.
+      return msg.status === 'waiting' && typeof msg.awaitingInput === 'boolean' ? 'waiting' : null;
     case 'agentToolPermission':
       return 'permission';
     case 'agentToolStart':

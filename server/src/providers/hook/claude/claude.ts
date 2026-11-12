@@ -25,6 +25,7 @@ import {
 } from './constants.js';
 import { conversationTitle, sessionInfo, sessionInfoFromRecord } from './conversationTitle.js';
 import { liveSessions } from './liveSessions.js';
+import { startsNoTurn } from './localCommands.js';
 import { isInheritedClaudeSessionEnv } from './sessionEnv.js';
 
 // ── formatToolStatus: moved from src/transcriptParser.ts ──
@@ -368,6 +369,7 @@ export const claudeProvider: HookProvider = {
   conversationTitle,
   sessionInfo,
   sessionInfoFromRecord,
+  startsNoTurn,
   liveSessions: () => liveSessions(),
 
   team: claudeTeamProvider,

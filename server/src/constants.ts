@@ -15,10 +15,12 @@ export const TOOL_DONE_DELAY_MS = 300;
 export const PERMISSION_TIMER_DELAY_MS = 7000;
 /** Heuristic: silence duration before marking a text-only turn as complete */
 export const TEXT_IDLE_DELAY_MS = 5000;
-/** Heuristic: a turn with no foreground tool running and nothing written to its
- *  transcript for this long has ended without a turn_duration (a local command
- *  such as /model or /color, an interrupted turn): the agent is marked waiting. */
-export const QUIET_TURN_IDLE_MS = 120_000;
+/** Heuristic fallback: a turn with no foreground tool running and nothing
+ *  written to its transcript for this long has ended without a turn_duration
+ *  (an interrupted turn, a record the parser took for a prompt): the agent is
+ *  marked waiting. Long, because a model writing one long block (a big Write)
+ *  writes nothing until it is done. */
+export const QUIET_TURN_IDLE_MS = 5 * 60_000;
 /** How often heuristic agents are checked for a quiet turn. */
 export const QUIET_TURN_CHECK_INTERVAL_MS = 30_000;
 /** Heuristic: idle threshold for per-agent /clear detection (content check prevents stealing) */

@@ -23,17 +23,17 @@ function floor(): OfficeLayout {
 }
 
 describe('pendingAckChange', () => {
-  it('starts a pending ack when a turn ends waiting on input, or on a permission prompt', () => {
+  it('starts a pending ack on every live turn end (Stop or waiting on input) and on a permission prompt', () => {
     expect(pendingAckChange({ type: 'agentStatus', status: 'waiting', awaitingInput: true })).toBe(
+      'waiting',
+    );
+    expect(pendingAckChange({ type: 'agentStatus', status: 'waiting', awaitingInput: false })).toBe(
       'waiting',
     );
     expect(pendingAckChange({ type: 'agentToolPermission' })).toBe('permission');
   });
 
-  it('leaves a finished turn that is not waiting on input alone (checkmark only)', () => {
-    expect(
-      pendingAckChange({ type: 'agentStatus', status: 'waiting', awaitingInput: false }),
-    ).toBeNull();
+  it('ignores the waiting status a connect replays (no awaitingInput field)', () => {
     expect(pendingAckChange({ type: 'agentStatus', status: 'waiting' })).toBeNull();
   });
 
