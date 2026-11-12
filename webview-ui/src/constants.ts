@@ -854,6 +854,14 @@ export const MUSIC_RECENT_NAMES = 12;
 export const MUSIC_NAME_REROLLS = 8;
 /** localStorage key for the radio's volume and mood (per browser). */
 export const MUSIC_STORAGE_KEY = 'pixel-agents.radio';
+/** The album the system's media controls (macOS Now Playing) show for every tune. */
+export const MUSIC_SESSION_ALBUM = 'Pixel Agents';
+/** The artwork they show: the app icon, relative to the page. */
+export const MUSIC_SESSION_ARTWORK = {
+  src: 'icons/icon-512.png',
+  sizes: '512x512',
+  type: 'image/png',
+};
 /** The compact player's width. */
 export const MUSIC_PLAYER_WIDTH_PX = 364;
 /** The player's visualizer: how many bars, and the band of the mix they span. */

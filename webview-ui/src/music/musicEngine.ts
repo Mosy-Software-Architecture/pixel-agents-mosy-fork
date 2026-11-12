@@ -12,6 +12,7 @@ import {
   MUSIC_LOOKAHEAD_SEC,
   MUSIC_NAME_REROLLS,
   MUSIC_RECENT_NAMES,
+  MUSIC_SESSION_ARTWORK,
   MUSIC_SKIP_FADE_SEC,
   MUSIC_STORAGE_KEY,
   MUSIC_TICK_MS,
@@ -26,6 +27,7 @@ import {
   type Song,
   type WaveEvent,
 } from './composer.js';
+import { connectMediaSession } from './mediaSession.js';
 import { chooseMood, MOOD_KEYS, type MoodKey, type MoodSetting } from './moods.js';
 import { newSeed } from './rng.js';
 import { parseSongCode } from './songCode.js';
@@ -81,6 +83,8 @@ const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 class OfficeRadio {
   private ac: AudioContext | null = null;
+  /** What the speakers play: the mix, as a media stream (see init). */
+  private output!: HTMLAudioElement;
   private master!: GainNode;
   private channelGain = {} as Record<Channel, GainNode>;
   private pulseWaves: PeriodicWave[] = [];
@@ -131,9 +135,11 @@ class OfficeRadio {
     if (this.playing) {
       this.playing = false;
       this.stopClock();
+      this.output.pause();
       await ac.suspend();
     } else {
       await ac.resume();
+      await this.output.play();
       this.playing = true;
       if (this.nextTime < ac.currentTime) this.nextTime = ac.currentTime + 0.05;
       this.schedule();
@@ -244,7 +250,15 @@ class OfficeRadio {
     analyser.minDecibels = -75;
     analyser.maxDecibels = -20;
     this.analyser = analyser;
-    this.master.connect(tone).connect(ac.destination);
+    // The mix reaches the speakers through an <audio> element, not straight
+    // from the context: the system's media controls (macOS Now Playing, the
+    // media keys) list a page only while one of its media elements plays.
+    const stream = ac.createMediaStreamDestination();
+    this.master.connect(tone).connect(stream);
+    this.output = document.createElement('audio');
+    this.output.hidden = true;
+    this.output.srcObject = stream.stream;
+    document.body.append(this.output);
     // The visualizer listens to the mix before the volume, so its bars look
     // the same at any volume (and keep moving while muted).
     const mix = ac.createGain();
@@ -528,3 +542,14 @@ class OfficeRadio {
 }
 
 export const officeRadio = new OfficeRadio();
+
+// The artwork is the app icon, as an absolute URL (the page may live under a subpath).
+const artwork = {
+  ...MUSIC_SESSION_ARTWORK,
+  src: new URL(MUSIC_SESSION_ARTWORK.src, document.baseURI).href,
+};
+connectMediaSession(
+  officeRadio,
+  'mediaSession' in navigator ? navigator.mediaSession : undefined,
+  (info) => new MediaMetadata({ ...info, artwork: [artwork] }),
+);
