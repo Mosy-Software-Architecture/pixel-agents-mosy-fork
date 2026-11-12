@@ -1110,6 +1110,32 @@ describe('clientMessageHandler: standalone terminal control plane', () => {
     expect(settings?.bypassPermissions).toBe(true);
   });
 
+  // ── Show Directory Names ─────────────────────────────────────
+
+  it('shows Directory names by default, and persists the choice next to the other settings', () => {
+    dispatch({ type: 'webviewReady' }, ctx());
+    expect(sent.find((m) => m.type === 'settingsLoaded')?.showDirectoryNames).toBe(true);
+
+    dispatch({ type: 'setShowDirectoryNames', enabled: false }, ctx());
+    expect(readConfig().standalone.showDirectoryNames).toBe(false);
+    sent = [];
+    dispatch({ type: 'webviewReady' }, ctx());
+    expect(sent.find((m) => m.type === 'settingsLoaded')?.showDirectoryNames).toBe(false);
+
+    // junk is ignored
+    dispatch({ type: 'setShowDirectoryNames', enabled: 'yes' }, ctx());
+    expect(readConfig().standalone.showDirectoryNames).toBe(false);
+  });
+
+  it('refuses setShowDirectoryNames from an unprivileged client and tells it the truth', () => {
+    dispatch({ type: 'setShowDirectoryNames', enabled: false }, ctx({ privileged: false }));
+
+    expect(readConfig().standalone.showDirectoryNames).toBe(true);
+    expect(sent).toContainEqual(
+      expect.objectContaining({ type: 'settingsLoaded', showDirectoryNames: true }),
+    );
+  });
+
   // ── webviewReady: the host's own Directory ───────────────────
 
   it('webviewReady lists no host Directory while Show Start Directory is off (the default)', () => {

@@ -17,6 +17,8 @@ import {
   RECENT_CONVERSATIONS_COUNT,
 } from '../constants.js';
 import { prefersReducedMotion } from '../hooks/usePresence.js';
+import { useShowDirectoryNames } from '../hooks/useShowDirectoryNames.js';
+import { shownDirectoryName } from '../office/directoryNames.js';
 import { liveElsewhereBadge, liveElsewhereWarning, resumeNeedsConfirm } from './liveElsewhere.js';
 import { recentAcross } from './recent.js';
 import { timeAgo } from './timeAgo.js';
@@ -384,8 +386,17 @@ export interface RowProps {
  * says so under its title; pressing it, when that would resume it, first asks
  * in place (a second process on a running session is rarely meant).
  */
-export function ConversationRow({ conversation, where, onPress, statusFor, now, roomy }: RowProps) {
+export function ConversationRow({
+  conversation,
+  where: directoryName,
+  onPress,
+  statusFor,
+  now,
+  roomy,
+}: RowProps) {
   const { title, updatedAt, palette, repeat, agentId, liveElsewhere } = conversation;
+  // Settings → Show Directory Names off: no Directory line (one Directory says nothing).
+  const where = shownDirectoryName(directoryName, useShowDirectoryNames());
   const status = agentId !== undefined ? statusFor(agentId) : null;
   const [confirming, setConfirming] = useState(false);
   const needsConfirm = resumeNeedsConfirm(conversation);

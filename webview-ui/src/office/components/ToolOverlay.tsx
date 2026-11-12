@@ -19,8 +19,10 @@ import {
   TOOL_OVERLAY_VERTICAL_OFFSET,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
+import { useShowDirectoryNames } from '../../hooks/useShowDirectoryNames.js';
 import { ContextBar } from '../ContextBar.js';
 import { contextLeft } from '../contextGauge.js';
+import { shownDirectoryName } from '../directoryNames.js';
 import type { OfficeState } from '../engine/officeState.js';
 import { overlayProjection } from '../projection.js';
 import { agentSessionInfo, sessionColor } from '../sessionLabel.js';
@@ -113,6 +115,8 @@ export function ToolOverlay({
   onCloseAgent,
   alwaysShowOverlay,
 }: ToolOverlayProps) {
+  // Settings → Show Directory Names: the label's last line.
+  const showDirectory = useShowDirectoryNames();
   const [, setTick] = useState(0);
   useEffect(() => {
     let rafId = 0;
@@ -296,6 +300,7 @@ export function ToolOverlay({
         // it fills (the colour still warns by the share used).
         const contextRatio = ch.contextTokens / ch.maxContextTokens;
         const showContextGauge = !isSub && ch.contextReported === true;
+        const directoryName = shownDirectoryName(ch.directoryName, showDirectory);
 
         return (
           <Fragment key={id}>
@@ -353,9 +358,9 @@ export function ToolOverlay({
                   >
                     {activityText}
                   </span>
-                  {ch.directoryName && (
+                  {directoryName && (
                     <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
-                      {ch.directoryName}
+                      {directoryName}
                     </span>
                   )}
                 </div>

@@ -35,6 +35,7 @@ import { useIsMobile } from './hooks/useIsMobile.js';
 import { useKeyboardViewport } from './hooks/useKeyboardViewport.js';
 import { useLaunchActions } from './hooks/useLaunchActions.js';
 import { popClass, usePresence } from './hooks/usePresence.js';
+import { useShowDirectoryNames } from './hooks/useShowDirectoryNames.js';
 import { useTerminalDrawer } from './hooks/useTerminalDrawer.js';
 import { MobileMenu, MobileMenuButton } from './mobile/MobileMenu.js';
 import { MobileShell } from './mobile/MobileShell.js';
@@ -43,6 +44,7 @@ import { useMobileShell } from './mobile/useMobileShell.js';
 import { MusicPlayer } from './music/MusicPlayer.js';
 import { OfficeCanvas } from './office/components/OfficeCanvas.js';
 import { ToolOverlay } from './office/components/ToolOverlay.js';
+import { setShowDirectoryNames } from './office/directoryNames.js';
 import { EditorState } from './office/editor/editorState.js';
 import { EditorToolbar } from './office/editor/EditorToolbar.js';
 import { OfficeState } from './office/engine/officeState.js';
@@ -191,6 +193,7 @@ function App() {
     () => getOfficeState().looksVersion,
   );
   useSyncExternalStore(subscribeAgentSessionInfo, agentSessionInfoVersion);
+  const directoryNamesShown = useShowDirectoryNames();
   // The selected agent, which the roster's Wear buttons dress (none: the roster
   // only launches and edits, as without a selection).
   const dressTarget = officeReadOnly
@@ -1047,6 +1050,12 @@ function App() {
           const newVal = !showHostDirectories;
           setShowHostDirectories(newVal);
           transport.send({ type: 'setShowHostDirectories', enabled: newVal });
+        }}
+        showDirectoryNames={directoryNamesShown}
+        onToggleShowDirectoryNames={() => {
+          const newVal = !directoryNamesShown;
+          setShowDirectoryNames(newVal);
+          transport.send({ type: 'setShowDirectoryNames', enabled: newVal });
         }}
         onExportLayout={handleExportLayout}
         onImportLayout={handleImportLayout}

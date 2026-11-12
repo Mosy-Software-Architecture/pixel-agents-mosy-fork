@@ -169,6 +169,7 @@ components:
         - $ref: '#/components/schemas/SetShowAreas'
         - $ref: '#/components/schemas/SetBypassPermissions'
         - $ref: '#/components/schemas/SetShowHostDirectories'
+        - $ref: '#/components/schemas/SetShowDirectoryNames'
         - $ref: '#/components/schemas/SaveDirectory'
         - $ref: '#/components/schemas/RemoveDirectory'
         - $ref: '#/components/schemas/RequestDirectorySuggestions'
@@ -762,6 +763,7 @@ components:
         - showAreas
         - bypassPermissions
         - showHostDirectories
+        - showDirectoryNames
       properties:
         type:
           const: settingsLoaded
@@ -798,6 +800,13 @@ components:
             Persistent per-host choice whether the host's own Directories (VS
             Code's workspace folders, standalone's start directory) are listed
             in `directoriesLoaded`. Off by default.
+        showDirectoryNames:
+          type: boolean
+          description: >-
+            Persistent per-host choice whether an agent's Directory name is
+            shown: under each Recent conversation and search result, and as
+            the last line of the label over its character. On by default; off
+            suits a host whose sessions all live in one Directory.
 
     BypassPermissionsUpdated:
       description: |
@@ -1434,6 +1443,19 @@ components:
       properties:
         type:
           const: setAlwaysShowLabels
+        enabled:
+          type: boolean
+
+    SetShowDirectoryNames:
+      description: >-
+        Show or hide Directory names under conversations and over characters
+        (settingsLoaded.showDirectoryNames).
+      type: object
+      additionalProperties: false
+      required: [type, enabled]
+      properties:
+        type:
+          const: setShowDirectoryNames
         enabled:
           type: boolean
 

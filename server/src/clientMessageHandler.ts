@@ -110,6 +110,7 @@ const KEY_HOOKS_INFO_SHOWN = 'pixel-agents.hooksInfoShown';
 const KEY_SHOW_AREAS = 'pixel-agents.showAreas';
 const KEY_BYPASS_PERMISSIONS = 'pixel-agents.bypassPermissions';
 const KEY_SHOW_HOST_DIRECTORIES = 'pixel-agents.showHostDirectories';
+const KEY_SHOW_DIRECTORY_NAMES = 'pixel-agents.showDirectoryNames';
 
 /** The provider whose conversations the sidebar lists and resumes: the first
  *  that names them and can launch (HookProvider.conversationTitle). */
@@ -384,6 +385,11 @@ export function handleClientMessage(
 
     case 'setLastSeenVersion':
       adapter?.setSetting(KEY_LAST_SEEN_VERSION, msg.version as string);
+      break;
+
+    case 'setShowDirectoryNames':
+      if (typeof msg.enabled !== 'boolean') break;
+      adapter?.setSetting(KEY_SHOW_DIRECTORY_NAMES, msg.enabled);
       break;
 
     case 'setAlwaysShowLabels':
@@ -836,6 +842,7 @@ function settingsSnapshot(adapter: StateAdapter | undefined) {
     showAreas: adapter?.getSetting(KEY_SHOW_AREAS, false) ?? false,
     bypassPermissions: adapter?.getSetting(KEY_BYPASS_PERMISSIONS, false) ?? false,
     showHostDirectories: adapter?.getSetting(KEY_SHOW_HOST_DIRECTORIES, false) ?? false,
+    showDirectoryNames: adapter?.getSetting(KEY_SHOW_DIRECTORY_NAMES, true) ?? true,
   } as const;
 }
 
@@ -877,6 +884,7 @@ function refuseReadOnly(
     case 'setShowAreas':
     case 'setBypassPermissions':
     case 'setShowHostDirectories':
+    case 'setShowDirectoryNames':
       send(settingsSnapshot(ctx.store.getAdapter()));
       return;
     case 'addExternalAssetDirectory':
