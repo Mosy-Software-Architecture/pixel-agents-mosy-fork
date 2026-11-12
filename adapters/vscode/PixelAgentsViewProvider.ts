@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import type { StateAdapter } from '../../core/src/adapter.js';
 import { rosterPick } from '../../core/src/paletteUtils.js';
 import type { HookProvider } from '../../core/src/provider.js';
+import { handleAgentCharacterClientMessage } from '../../server/src/agentCharacter.js';
 import { buildAgentDiagnostics } from '../../server/src/agentDiagnostics.js';
 import { agentCreatedMessage } from '../../server/src/agentMessages.js';
 import { AgentRuntime } from '../../server/src/agentRuntime.js';
@@ -515,6 +516,12 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
             this.runtime.registerAgent(agent.sessionId, id);
           }
         }
+      } else if (message.type === 'setAgentCharacter') {
+        // Through the store, so the embedded server's /ws clients see the new look too.
+        handleAgentCharacterClientMessage(message, {
+          store: this.store,
+          broadcast: (m) => this.store.broadcast(m),
+        });
       } else if (message.type === 'focusAgent') {
         const agent = this.store.get(message.id);
         if (agent) {

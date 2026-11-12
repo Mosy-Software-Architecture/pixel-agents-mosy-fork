@@ -104,6 +104,22 @@ export class OfficeState {
     this.selectionListeners.add(listener);
     return () => this.selectionListeners.delete(listener);
   }
+  private _looksVersion = 0;
+  private readonly lookListeners = new Set<() => void>();
+  /** Counts the look changes (setAgentLook, syncAgent): React reads it to redraw
+   *  what shows a look outside the canvas (the agent cards, the roster). */
+  get looksVersion(): number {
+    return this._looksVersion;
+  }
+  /** Observe look changes. Returns the unsubscribe. */
+  subscribeLooks(listener: () => void): () => void {
+    this.lookListeners.add(listener);
+    return () => this.lookListeners.delete(listener);
+  }
+  private lookChanged(): void {
+    this._looksVersion++;
+    for (const listener of this.lookListeners) listener();
+  }
   cameraFollowId: number | null = null;
   hoveredAgentId: number | null = null;
   hoveredTile: { col: number; row: number } | null = null;
@@ -640,9 +656,10 @@ export class OfficeState {
   syncAgent(agentId: number, palette?: number, repeat?: number, seatId?: string): void {
     const ch = this.characters.get(agentId);
     if (!ch) return;
-    if (palette !== undefined) {
+    if (palette !== undefined && (ch.palette !== palette || ch.repeat !== (repeat ?? 0))) {
       ch.palette = palette;
       ch.repeat = repeat ?? 0;
+      this.lookChanged();
     }
     if (seatId !== undefined && seatId !== ch.seatId) {
       const seat = this.seats.get(seatId);
@@ -650,7 +667,8 @@ export class OfficeState {
     }
   }
 
-  /** Give an agent a new look (its character moved in the list); its sub-agents wear it too. */
+  /** Give an agent a new look (its character moved in the list, or it was dressed in
+   *  another one); its sub-agents wear it too. */
   setAgentLook(agentId: number, palette: number, repeat: number): void {
     for (const ch of this.characters.values()) {
       if (ch.id === agentId || (ch.isSubagent && ch.parentAgentId === agentId)) {
@@ -658,6 +676,7 @@ export class OfficeState {
         ch.repeat = repeat;
       }
     }
+    this.lookChanged();
   }
 
   /** Reassign an agent from their current seat to a new seat */

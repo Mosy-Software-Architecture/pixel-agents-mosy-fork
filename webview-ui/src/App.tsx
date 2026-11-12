@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { toMajorMinor } from './changelogData.js';
+import { dressTargetOf } from './characters/dress.js';
 import { CharactersView } from './characters/ui/CharactersView.js';
 import { AgentCardBar } from './components/AgentCardBar.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import type { RosterDress } from './components/CharacterPicker.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
 import { DirectoryModal } from './components/DirectoryModal.js';
@@ -48,6 +50,11 @@ import { exportLayoutToFile } from './office/layout/exportLayout.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from './office/layout/layoutSerializer.js';
 import { overlayProjection } from './office/projection.js';
+import {
+  agentSessionInfo,
+  agentSessionInfoVersion,
+  subscribeAgentSessionInfo,
+} from './office/sessionLabel.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool, type OfficeLayout, TILE_SIZE } from './office/types.js';
 import { isBrowserRuntime, isE2E } from './runtime.js';
@@ -176,6 +183,29 @@ function App() {
     useCallback((onChange: () => void) => getOfficeState().subscribeSelection(onChange), []),
     () => getOfficeState().selectedAgentId,
   );
+  // Looks and session names change outside React too: follow them, so the
+  // cards' mug shots and the roster's Wear buttons keep up with a dressed agent
+  // or a renamed session.
+  useSyncExternalStore(
+    useCallback((onChange: () => void) => getOfficeState().subscribeLooks(onChange), []),
+    () => getOfficeState().looksVersion,
+  );
+  useSyncExternalStore(subscribeAgentSessionInfo, agentSessionInfoVersion);
+  // The selected agent, which the roster's Wear buttons dress (none: the roster
+  // only launches and edits, as without a selection).
+  const dressTarget = officeReadOnly
+    ? null
+    : dressTargetOf(
+        focusedAgentId === null ? undefined : getOfficeState().characters.get(focusedAgentId),
+        focusedAgentId === null ? undefined : agentSessionInfo(focusedAgentId)?.title,
+      );
+  const rosterDress: RosterDress | undefined = dressTarget
+    ? {
+        ...dressTarget,
+        onDress: (palette) =>
+          transport.send({ type: 'setAgentCharacter', id: dressTarget.agentId, palette }),
+      }
+    : undefined;
 
   // Standalone only: every input here stays false/empty under VS Code. Owns the
   // active tab on both shells; the desktop-only bits (isOpen, width, resize)
@@ -740,6 +770,7 @@ function App() {
           terminalAvailable={terminalAvailable}
           terminalUnavailableReason={terminalUnavailableReason}
           onLaunch={launchIntoDirectory}
+          dress={rosterDress}
         />
       )}
 
@@ -817,6 +848,7 @@ function App() {
           onOpenCharacters={officeReadOnly ? undefined : openCharacters}
           keyboardOpen={keyboard.keyboardOpen}
           menuSwipe={officeReadOnly ? undefined : menu.swipe}
+          dress={rosterDress}
         />
       ) : (
         <>

@@ -1,6 +1,7 @@
 import type { ReactNode, RefObject } from 'react';
 import { useCallback, useRef } from 'react';
 
+import type { RosterDress } from '../components/CharacterPicker.js';
 import { MobileAgentBar } from '../components/MobileAgentBar.js';
 import { MobileKeyBar } from '../components/MobileKeyBar.js';
 import { MobileTerminalPage } from '../components/MobileTerminalPage.js';
@@ -45,6 +46,8 @@ interface MobileShellProps {
   /** The menu (MobileMenu, mounted by App), pulled in from the office's left
    *  edge; absent where there is no menu. */
   menuSwipe?: RefObject<SwipePanel | null>;
+  /** The agent selected in the office, which the roster's Wear buttons dress. */
+  dress?: RosterDress;
 }
 
 /**
@@ -71,6 +74,7 @@ export function MobileShell({
   onOpenCharacters,
   keyboardOpen,
   menuSwipe,
+  dress,
 }: MobileShellProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -159,6 +163,7 @@ export function MobileShell({
         launchUnavailableReason={terminalUnavailableReason}
         getAppearance={drawer.getAppearance}
         statusFor={drawer.statusFor}
+        dress={dress}
       />
 
       {/* Accessory keys for the TUI, only while the software keyboard is up —

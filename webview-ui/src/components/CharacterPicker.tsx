@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CharacterProfile } from '../../../core/src/characterProfiles.js';
 import { MAX_CHARACTER_PROFILES } from '../../../core/src/characterProfiles.js';
 import { useCast } from '../characters/castStore.js';
+import { dressLabel, type DressTarget } from '../characters/dress.js';
 import { characterLabel } from '../characters/profiles.js';
 import { rosterOrder } from '../characters/recent.js';
 import type { CharacterRenderer } from '../characters/renderer.js';
@@ -30,6 +31,12 @@ function useWalkFrame(walking: boolean): number {
   return WALK_FRAMES[step % WALK_FRAMES.length];
 }
 
+/** The selected agent, which each card's Wear button dresses in its character. */
+export interface RosterDress extends DressTarget {
+  /** Dress the agent in character `palette` (setAgentCharacter). */
+  onDress: (palette: number) => void;
+}
+
 interface CharacterRowProps {
   /** A tap or click: launch an agent wearing this character. */
   onPick: (index: number) => void;
@@ -37,6 +44,10 @@ interface CharacterRowProps {
   onEdit: (index: number) => void;
   /** The leading `+ New` slot: add a character and edit it. */
   onNew: () => void;
+  /** With an agent selected in the office: every card but the one it wears
+   *  gets a Wear button that dresses it in that character (launching nothing).
+   *  Absent, the roster is only for launching and editing. */
+  dress?: RosterDress;
   /** Whether the row is showing; the recent order only updates while it shows
    *  (a row that stays mounted must not reshuffle under the closing slide). */
   isOpen?: boolean;
@@ -60,6 +71,7 @@ export function CharacterRow({
   onPick,
   onEdit,
   onNew,
+  dress,
   isOpen = true,
   className = '',
   edgeScrollbars,
@@ -93,7 +105,14 @@ export function CharacterRow({
           <div
             className={`flex items-stretch gap-6 w-max -scale-y-100 ${edgeScrollbars.rowClassName ?? ''}`}
           >
-            <RosterCards recent={recent} dpr={dpr} onPick={onPick} onEdit={onEdit} onNew={onNew} />
+            <RosterCards
+              recent={recent}
+              dpr={dpr}
+              onPick={onPick}
+              onEdit={onEdit}
+              onNew={onNew}
+              dress={dress}
+            />
           </div>
         </div>
         {overflows && (
@@ -107,7 +126,14 @@ export function CharacterRow({
       className={`flex items-stretch gap-6 overflow-x-auto overscroll-contain ${className}`}
       onWheel={wheel}
     >
-      <RosterCards recent={recent} dpr={dpr} onPick={onPick} onEdit={onEdit} onNew={onNew} />
+      <RosterCards
+        recent={recent}
+        dpr={dpr}
+        onPick={onPick}
+        onEdit={onEdit}
+        onNew={onNew}
+        dress={dress}
+      />
     </div>
   );
 }
@@ -187,7 +213,8 @@ function RosterCards({
   onPick,
   onEdit,
   onNew,
-}: Pick<CharacterRowProps, 'onPick' | 'onEdit' | 'onNew'> & {
+  dress,
+}: Pick<CharacterRowProps, 'onPick' | 'onEdit' | 'onNew' | 'dress'> & {
   recent: readonly number[];
   dpr: number;
 }) {
@@ -214,6 +241,7 @@ function RosterCards({
           dpr={dpr}
           onPick={onPick}
           onEdit={onEdit}
+          dress={dress && dress.wornPalette !== index ? dress : undefined}
         />
       ))}
     </>
@@ -270,9 +298,19 @@ interface CharacterCardProps {
   dpr: number;
   onPick: (index: number) => void;
   onEdit: (index: number) => void;
+  /** The agent this card's Wear button dresses, if it shows one. */
+  dress?: RosterDress;
 }
 
-function CharacterCard({ index, profile, renderer, dpr, onPick, onEdit }: CharacterCardProps) {
+function CharacterCard({
+  index,
+  profile,
+  renderer,
+  dpr,
+  onPick,
+  onEdit,
+  dress,
+}: CharacterCardProps) {
   const longPress = useLongPress(() => onEdit(index));
   const label = characterLabel(profile, index);
   // A mouse over the card walks the character in place. Mouse only: a tap's
@@ -319,6 +357,19 @@ function CharacterCard({ index, profile, renderer, dpr, onPick, onEdit }: Charac
       >
         <PixelIcon name="pencil" />
       </button>
+      {/* Right below the pencil, shown the same way on hover; on coarse
+          pointers (no hover) it stays visible in the pencil's place. */}
+      {dress && (
+        <button
+          type="button"
+          onClick={() => dress.onDress(index)}
+          aria-label={dressLabel(dress, label)}
+          title={`${dress.agentLabel} wears ${label}`}
+          className="absolute top-24 right-2 px-2 py-1 bg-bg border-none rounded-none cursor-pointer leading-none text-2xs text-text-muted hover:text-text opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:top-2"
+        >
+          Wear
+        </button>
+      )}
     </div>
   );
 }

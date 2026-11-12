@@ -17,6 +17,25 @@ export interface AgentSessionInfo {
 }
 
 const infoById = new Map<number, AgentSessionInfo>();
+const listeners = new Set<() => void>();
+let version = 0;
+
+function changed(): void {
+  version++;
+  for (const listener of listeners) listener();
+}
+
+/** Observe changes to any agent's session info (React: the agent cards'
+ *  titles, which name the session). Returns the unsubscribe. */
+export function subscribeAgentSessionInfo(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Counts the changes, for useSyncExternalStore. */
+export function agentSessionInfoVersion(): number {
+  return version;
+}
 
 /** Record an agentSessionInfo (useExtensionMessages): each message is the
  *  agent's whole state, so absent fields are cleared. */
@@ -28,11 +47,12 @@ export function setAgentSessionInfo(id: number, info: AgentSessionInfo): void {
   };
   if (Object.keys(next).length === 0) infoById.delete(id);
   else infoById.set(id, next);
+  changed();
 }
 
 /** Forget a closed agent's (useExtensionMessages' closeAgent). */
 export function clearAgentSessionInfo(id: number): void {
-  infoById.delete(id);
+  if (infoById.delete(id)) changed();
 }
 
 /** An agent's session name and colour, if its session has any. */

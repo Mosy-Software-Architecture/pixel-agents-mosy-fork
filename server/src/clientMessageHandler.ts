@@ -2,6 +2,7 @@ import type { StateAdapter } from '../../core/src/adapter.js';
 import { rosterPick } from '../../core/src/paletteUtils.js';
 import type { HookProvider } from '../../core/src/provider.js';
 import { resendAgentActivity } from './agentActivityResend.js';
+import { handleAgentCharacterClientMessage } from './agentCharacter.js';
 import { buildAgentDiagnostics } from './agentDiagnostics.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
@@ -215,6 +216,14 @@ export function handleClientMessage(
       if (recent) store.broadcast(recent);
       break;
     }
+
+    case 'setAgentCharacter':
+      // Shared with the VS Code adapter: the new look reaches every office.
+      handleAgentCharacterClientMessage(msg, {
+        store,
+        broadcast: (message) => store.broadcast(message),
+      });
+      break;
 
     case 'requestConversations': {
       if (!ctx.ptyManager || !conversationProvider) break;

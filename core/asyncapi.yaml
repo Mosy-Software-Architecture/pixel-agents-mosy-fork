@@ -143,6 +143,7 @@ components:
       oneOf:
         - $ref: '#/components/schemas/WebviewReady'
         - $ref: '#/components/schemas/LaunchAgent'
+        - $ref: '#/components/schemas/SetAgentCharacter'
         - $ref: '#/components/schemas/FocusAgent'
         - $ref: '#/components/schemas/CloseAgent'
         - $ref: '#/components/schemas/SaveAgentSeats'
@@ -577,7 +578,8 @@ components:
             The agents whose look this list changed: their characters moved to other indices
             (a character inserted or deleted before them), or theirs was deleted and they
             got a new one. Apply together with the list, so no frame draws an agent from the
-            wrong character. Absent when no agent's look changed.
+            wrong character. Absent when no agent's look changed. Also sent, with the list
+            unchanged, when setAgentCharacter dressed an agent in another character.
           items:
             $ref: '#/components/schemas/AgentLook'
         saveId:
@@ -1298,6 +1300,30 @@ components:
             Character the agent wears, as an index into the character profiles
             (picked from the roster). Absent, the Directory's default characters
             apply, else the server picks one at random.
+
+    SetAgentCharacter:
+      description: >-
+        Dress a running agent in another character (the roster's Wear button,
+        with that agent selected). The server gives it that character's next
+        free repeat, its teammates and background spawns follow, the look is
+        persisted (so a reload or a resume keeps it), the character moves to
+        the front of the roster, and every office gets the new look in
+        characterProfilesLoaded.agentLooks. Ignored for an agent that copies
+        its Lead's look (a teammate), an unknown agent, a palette outside the
+        cast, or the character the agent already wears.
+      type: object
+      additionalProperties: false
+      required: [type, id, palette]
+      properties:
+        type:
+          const: setAgentCharacter
+        id:
+          type: integer
+          description: The agent to dress.
+        palette:
+          type: integer
+          minimum: 0
+          description: The character to wear, as an index into the character profiles.
 
     FocusAgent:
       description: Focus an agent's terminal.

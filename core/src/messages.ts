@@ -59,6 +59,7 @@ export type ServerMessage =
 export type ClientMessage =
   | WebviewReady
   | LaunchAgent
+  | SetAgentCharacter
   | FocusAgent
   | CloseAgent
   | SaveAgentSeats
@@ -548,6 +549,12 @@ export interface LaunchAgent {
   type: 'launchAgent';
   directoryPath?: string;
   palette?: number;
+}
+
+export interface SetAgentCharacter {
+  type: 'setAgentCharacter';
+  id: number;
+  palette: number;
 }
 
 export interface FocusAgent {
