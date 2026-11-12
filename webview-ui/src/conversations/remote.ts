@@ -15,8 +15,8 @@ export function remoteActivity(status: string): 'working' | 'attention' | 'idle'
 }
 
 /** What a row shows at its end instead of the time: an agent in the office
- *  runs it (its card's status), or it runs on its host (the host's word for
- *  it). The icon is the round dot, or the house on a remote host's row. Null:
+ *  runs it (its card's status, else the host's), or it runs on its host (the
+ *  host's word for it). The icon is the round dot, or the house on a remote host's row. Null:
  *  it runs nowhere, and the time shows. */
 export function rowMark<Status extends string>(
   conversation: Conversation,
@@ -24,13 +24,13 @@ export function rowMark<Status extends string>(
   statusFor: (agentId: number) => Status | null,
 ): { icon: 'dot' | 'remote'; status: Status | ReturnType<typeof remoteActivity> | null } | null {
   const icon = remote ? 'remote' : 'dot';
+  const onHost =
+    remote && conversation.remoteStatus ? remoteActivity(conversation.remoteStatus) : null;
   if (conversation.agentId !== undefined) {
-    return { icon, status: statusFor(conversation.agentId) };
+    // Its agent's status, once the office knows one.
+    return { icon, status: statusFor(conversation.agentId) ?? onHost };
   }
-  if (remote && conversation.remoteStatus) {
-    return { icon, status: remoteActivity(conversation.remoteStatus) };
-  }
-  return null;
+  return onHost ? { icon, status: onHost } : null;
 }
 
 /** The line a host's section shows in place of its rows, or null. */

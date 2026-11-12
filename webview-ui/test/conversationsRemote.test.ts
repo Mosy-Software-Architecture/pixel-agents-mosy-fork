@@ -37,6 +37,11 @@ describe("a remote host's rows", () => {
       icon: 'remote',
       status: 'attention',
     });
+    // Open, its agent's status not known yet: the host's.
+    expect(rowMark(conversation({ agentId: 3, remoteStatus: 'busy' }), true, statusFor)).toEqual({
+      icon: 'remote',
+      status: 'working',
+    });
     // Running nowhere: the time shows.
     expect(rowMark(conversation(), true, statusFor)).toBeNull();
   });
