@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { makeSong, type Song } from '../src/music/composer.js';
-import { connectMediaSession, type TuneInfo } from '../src/music/mediaSession.js';
+import { connectMediaSession, silentLoopWav, type TuneInfo } from '../src/music/mediaSession.js';
 
 interface FakeState {
   playing: boolean;
@@ -139,5 +139,33 @@ describe('office radio media session', () => {
     });
     connectMediaSession(radio, session, asIs);
     expect([...session.handlers.keys()]).toEqual(['pause', 'nexttrack']);
+  });
+});
+
+describe('the silent loop behind the media session', () => {
+  const wav = silentLoopWav();
+  const view = new DataView(wav.buffer);
+  const text = (at: number, n: number) => String.fromCharCode(...wav.subarray(at, at + n));
+  const rate = view.getUint32(24, true);
+  const dataBytes = view.getUint32(40, true);
+
+  it('is a mono 16-bit PCM WAV whose sizes add up', () => {
+    expect(text(0, 4)).toBe('RIFF');
+    expect(text(8, 4)).toBe('WAVE');
+    expect(text(12, 4)).toBe('fmt ');
+    expect(text(36, 4)).toBe('data');
+    expect(view.getUint16(20, true)).toBe(1);
+    expect(view.getUint16(22, true)).toBe(1);
+    expect(view.getUint16(34, true)).toBe(16);
+    expect(view.getUint32(4, true)).toBe(wav.length - 8);
+    expect(dataBytes).toBe(wav.length - 44);
+  });
+
+  it('lasts longer than the 5 s Chrome needs to treat it as content', () => {
+    expect(dataBytes / 2 / rate).toBeGreaterThan(5);
+  });
+
+  it('is digital silence: every sample is zero', () => {
+    expect(wav.subarray(44).every((b) => b === 0)).toBe(true);
   });
 });
