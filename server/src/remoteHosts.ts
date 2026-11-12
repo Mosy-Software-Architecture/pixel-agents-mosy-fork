@@ -8,7 +8,6 @@ import type { AgentStateStore } from './agentStateStore.js';
 import { readConfig, type RemoteHost } from './configPersistence.js';
 import {
   PIXEL_AGENTS_DIR,
-  REMOTE_CONVERSATIONS_PER_HOST,
   REMOTE_LISTING_MAX_AGE_MS,
   REMOTE_LISTING_TIMEOUT_MS,
   REMOTE_MIRROR_DIR_NAME,
@@ -177,9 +176,10 @@ function remoteConversation(
   };
 }
 
-/** Each host the office has heard from, with its newest work sessions, then
- *  its services (all of them: only running ones are listed); a host not yet
- *  asked is left out until it answers. */
+/** Each host the office has heard from, with its work sessions newest first
+ *  (all of the listing's: the sidebar pages them), then its services (only
+ *  running ones are listed); a host not yet asked is left out until it
+ *  answers. */
 export function remoteHostConversations(
   hosts: readonly RemoteHost[],
   store: AgentStateStore,
@@ -192,7 +192,7 @@ export function remoteHostConversations(
         name: host.name,
         online: listing.online,
         conversations: [
-          ...listing.sessions.filter((s) => !s.service).slice(0, REMOTE_CONVERSATIONS_PER_HOST),
+          ...listing.sessions.filter((s) => !s.service),
           ...listing.sessions.filter((s) => s.service),
         ].map((session) => remoteConversation(session, store, host.name)),
       },

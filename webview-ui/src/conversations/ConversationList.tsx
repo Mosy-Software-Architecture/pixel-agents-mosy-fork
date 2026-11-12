@@ -24,13 +24,15 @@ import { prefersReducedMotion } from '../hooks/usePresence.js';
 import { useShowDirectoryNames } from '../hooks/useShowDirectoryNames.js';
 import { shownDirectoryName } from '../office/directoryNames.js';
 import { liveElsewhereBadge, liveElsewhereWarning, resumeNeedsConfirm } from './liveElsewhere.js';
-import { recentAcross } from './recent.js';
+import { recentSection } from './recent.js';
 import {
   isService,
   remoteCanOpen,
-  remoteGroups,
   remoteHostNote,
+  remotePage,
   remoteRowTitle,
+  remoteShowMore,
+  type RemoteShown,
   rowMark,
 } from './remote.js';
 import { timeAgo } from './timeAgo.js';
@@ -50,14 +52,17 @@ interface ConversationListProps {
   statusFor: (agentId: number) => TabStatus | null;
   /** Rows sized for a finger (the phone's panel). */
   roomy?: boolean;
-  /** Open the search over every conversation (or one Directory's). */
+  /** Open the search over every conversation (or one Directory's, or one
+   *  remote host's). */
   onSearch?: (scope: ConversationSearchScope) => void;
 }
 
-/** Where a search looks: every Directory, or the one named. */
+/** Where a search looks: every Directory, the one named, or a remote host's
+ *  listing (searched as the sidebar holds it). */
 export interface ConversationSearchScope {
   directoryPath?: string;
   directoryName?: string;
+  remoteHost?: RemoteHostConversations;
 }
 
 /**
@@ -69,7 +74,8 @@ export interface ConversationSearchScope {
  * titles them, each with a mug shot of the character its agent wore. One an
  * agent in the office is running shows its status dot, and pressing it goes
  * to that agent; pressing a past one resumes it. Last, each remote host's
- * sessions (remote.ts), pressing one opens it.
+ * sessions (remote.ts), pressing one opens it, paged like a Directory.
+ * With one Directory, Recent stands in for its section (recentSection).
  */
 export function ConversationList({
   open,
@@ -91,11 +97,14 @@ export function ConversationList({
   const list = useConversations(open, limits);
   // One open at a time: opening a Directory shuts the one that was open.
   const [openPath, setOpenPath] = useState(storedOpenPath);
+  // Rows per remote host group beyond the default five, forgotten as `limits` are.
+  const [remoteShown, setRemoteShown] = useState<Readonly<Record<string, RemoteShown>>>({});
   const toggle = (path: string) => {
     const next = openPath === path ? null : path;
     storeOpenPath(next);
     setOpenPath(next);
     setLimits({});
+    setRemoteShown({});
   };
   const showMore = (path: string) =>
     setLimits((prev) => ({
@@ -111,7 +120,7 @@ export function ConversationList({
       </p>
     );
   }
-  const recent = recentAcross(list.directories, RECENT_CONVERSATIONS_COUNT);
+  const recent = recentSection(list.directories, RECENT_CONVERSATIONS_COUNT);
   const now = list.receivedAt;
   return (
     <div className="flex-1 min-h-0 quiet-scrollbar">
@@ -119,7 +128,7 @@ export function ConversationList({
       <section data-testid="recent-conversations" className="pb-6 border-b-2 border-border">
         <SectionHeading
           action={
-            onSearch && recent.length > 0 ? (
+            onSearch && recent.rows.length > 0 ? (
               <TextButton testId="conversations-see-all" onPress={() => onSearch({})}>
                 See all
               </TextButton>
@@ -128,10 +137,10 @@ export function ConversationList({
         >
           Recent
         </SectionHeading>
-        {recent.length === 0 ? (
+        {recent.rows.length === 0 ? (
           <p className="m-0 px-10 py-2 text-xs text-text-muted">No conversations</p>
         ) : (
-          recent.map(({ conversation, directory }) => (
+          recent.rows.map(({ conversation, directory }) => (
             <ConversationRow
               key={conversation.sessionId}
               conversation={conversation}
@@ -143,30 +152,45 @@ export function ConversationList({
             />
           ))
         )}
+        {recent.more && (
+          <ShowMore
+            testId="conversations-show-more"
+            onPress={() => showMore(list.directories[0].path)}
+          />
+        )}
       </section>
-      <SectionHeading>By Directory</SectionHeading>
-      {list.directories.map((directory) => (
-        <DirectorySection
-          key={directory.path}
-          directory={directory}
-          expanded={openPath === directory.path}
-          onToggle={() => toggle(directory.path)}
-          now={now}
-          press={press}
-          statusFor={statusFor}
-          roomy={roomy}
-          onShowMore={() => showMore(directory.path)}
-          onSearch={
-            onSearch &&
-            (() => onSearch({ directoryPath: directory.path, directoryName: directory.name }))
-          }
-        />
-      ))}
+      {recent.byDirectory && <SectionHeading>By Directory</SectionHeading>}
+      {recent.byDirectory &&
+        list.directories.map((directory) => (
+          <DirectorySection
+            key={directory.path}
+            directory={directory}
+            expanded={openPath === directory.path}
+            onToggle={() => toggle(directory.path)}
+            now={now}
+            press={press}
+            statusFor={statusFor}
+            roomy={roomy}
+            onShowMore={() => showMore(directory.path)}
+            onSearch={
+              onSearch &&
+              (() => onSearch({ directoryPath: directory.path, directoryName: directory.name }))
+            }
+          />
+        ))}
       {onOpenRemote &&
         list.remoteHosts.map((host) => (
           <RemoteHostSection
             key={host.name}
             host={host}
+            shown={remoteShown[host.name] ?? {}}
+            onShowMore={(group) =>
+              setRemoteShown((prev) => ({
+                ...prev,
+                [host.name]: remoteShowMore(prev[host.name] ?? {}, group),
+              }))
+            }
+            onSearch={onSearch && (() => onSearch({ remoteHost: host }))}
             now={now}
             statusFor={statusFor}
             roomy={roomy}
@@ -183,22 +207,29 @@ export function ConversationList({
 
 /** A remote host's sessions under its name: running ones marked with the
  *  house in their status, then its services under Services, marked with the
- *  gear; or why there are none (offline, none lately). */
+ *  gear; or why there are none (offline, none lately). Each group shows five
+ *  rows, then "Show 5 more"; the heading's "See all" searches the host. */
 function RemoteHostSection({
   host,
+  shown,
+  onShowMore,
+  onSearch,
   now,
   statusFor,
   roomy,
   onPress,
 }: {
   host: RemoteHostConversations;
+  shown: RemoteShown;
+  onShowMore: (group: keyof RemoteShown) => void;
+  onSearch?: () => void;
   now: number;
   statusFor: ConversationListProps['statusFor'];
   roomy: boolean;
   onPress: (conversation: Conversation) => void;
 }) {
   const note = remoteHostNote(host);
-  const { work, services } = remoteGroups(host);
+  const { work, services, moreWork, moreServices } = remotePage(host, shown);
   const row = (conversation: Conversation) => (
     <ConversationRow
       key={conversation.sessionId}
@@ -212,7 +243,17 @@ function RemoteHostSection({
   );
   return (
     <section data-testid="remote-host" data-host={host.name} className="pb-6">
-      <SectionHeading>{host.name}</SectionHeading>
+      <SectionHeading
+        action={
+          onSearch && !note ? (
+            <TextButton testId="remote-host-see-all" onPress={onSearch}>
+              See all
+            </TextButton>
+          ) : undefined
+        }
+      >
+        {host.name}
+      </SectionHeading>
       {note ? (
         <p data-testid="remote-host-note" className="m-0 px-10 py-2 text-xs text-text-muted">
           {note}
@@ -220,10 +261,19 @@ function RemoteHostSection({
       ) : (
         <>
           {work.map(row)}
+          {moreWork && (
+            <ShowMore testId="remote-host-show-more" onPress={() => onShowMore('work')} />
+          )}
           {services.length > 0 && (
             <div data-testid="remote-host-services">
               <h4 className="m-0 pl-10 pt-6 pb-2 text-2xs font-normal text-text-muted">Services</h4>
               {services.map(row)}
+              {moreServices && (
+                <ShowMore
+                  testId="remote-host-services-show-more"
+                  onPress={() => onShowMore('services')}
+                />
+              )}
             </div>
           )}
         </>
@@ -268,6 +318,18 @@ function TextButton({
     >
       {children}
     </button>
+  );
+}
+
+/** "Show 5 more" under a group's rows (a Directory's, Recent's with one
+ *  Directory, a remote host's). */
+function ShowMore({ onPress, testId }: { onPress: () => void; testId: string }) {
+  return (
+    <div className="flex pl-8 pr-6 pt-2 pb-2">
+      <TextButton testId={testId} onPress={onPress}>
+        {`Show ${CONVERSATIONS_SHOW_MORE_STEP} more`}
+      </TextButton>
+    </div>
   );
 }
 

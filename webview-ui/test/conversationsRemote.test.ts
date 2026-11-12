@@ -8,7 +8,10 @@ import {
   remoteCanOpen,
   remoteGroups,
   remoteHostNote,
+  remotePage,
   remoteRowTitle,
+  remoteSearch,
+  remoteShowMore,
   rowMark,
 } from '../src/conversations/remote.js';
 
@@ -129,5 +132,82 @@ describe("a remote host's services", () => {
     expect(remoteCanOpen({ ...outside, agentId: 7 })).toBe(true);
     // A work session outside tmux still opens (it asks first, then resumes).
     expect(remoteCanOpen(conversation({ liveElsewhere: {} }))).toBe(true);
+  });
+});
+
+describe("a remote host's section pages like a Directory", () => {
+  const work = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      conversation({ sessionId: `w${i}`, title: `work ${i}`, remoteKind: 'work' }),
+    );
+  const services = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      conversation({ sessionId: `v${i}`, title: `svc-${i}`, remoteKind: 'service' }),
+    );
+  const host = (w: number, v: number) => ({
+    name: 'casita',
+    online: true,
+    conversations: [...work(w), ...services(v)],
+  });
+
+  it('shows five work rows, then "Show 5 more" while more exist', () => {
+    const page = remotePage(host(12, 0));
+    expect(page.work.map((c) => c.sessionId)).toEqual(['w0', 'w1', 'w2', 'w3', 'w4']);
+    expect(page.moreWork).toBe(true);
+    expect(remotePage(host(5, 0)).moreWork).toBe(false);
+  });
+
+  it('shows five more per press, until there are none left', () => {
+    const once = remoteShowMore({}, 'work');
+    expect(once).toEqual({ work: 10 });
+    expect(remotePage(host(12, 0), once).work).toHaveLength(10);
+    const twice = remoteShowMore(once, 'work');
+    const page = remotePage(host(12, 0), twice);
+    expect(page.work).toHaveLength(12);
+    expect(page.moreWork).toBe(false);
+  });
+
+  it('pages the services on their own', () => {
+    const page = remotePage(host(3, 7));
+    expect(page.work).toHaveLength(3);
+    expect(page.moreWork).toBe(false);
+    expect(page.services.map((c) => c.sessionId)).toEqual(['v0', 'v1', 'v2', 'v3', 'v4']);
+    expect(page.moreServices).toBe(true);
+    const more = remoteShowMore({}, 'services');
+    expect(more).toEqual({ services: 10 });
+    const after = remotePage(host(3, 7), more);
+    expect(after.services).toHaveLength(7);
+    expect(after.moreServices).toBe(false);
+    // The work group is left as it was.
+    expect(after.work).toHaveLength(3);
+  });
+});
+
+describe('the search scoped to a remote host', () => {
+  const casita = {
+    name: 'casita',
+    online: true,
+    conversations: [
+      conversation({ sessionId: 'a', title: 'MOS-884 outreach', remoteStatus: 'busy' }),
+      conversation({ sessionId: 'b', title: 'Fix the panel', remoteKind: 'work' }),
+      conversation({ sessionId: 'c', title: 'svc-charalanda', remoteKind: 'service' }),
+    ],
+  };
+
+  it('lists the whole listing, work then services, with an empty query', () => {
+    expect(remoteSearch(casita, '').map((c) => c.sessionId)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('matches every word of the query in the title, any case', () => {
+    expect(remoteSearch(casita, 'outreach mos').map((c) => c.sessionId)).toEqual(['a']);
+    expect(remoteSearch(casita, 'CHARALANDA').map((c) => c.sessionId)).toEqual(['c']);
+    expect(remoteSearch(casita, 'nothing')).toEqual([]);
+  });
+
+  it('keeps each row as listed, marks and all', () => {
+    const [found] = remoteSearch(casita, 'outreach');
+    expect(rowMark(found, true, statusFor)).toEqual({ icon: 'remote', status: 'working' });
+    const [svc] = remoteSearch(casita, 'svc');
+    expect(rowMark({ ...svc, remoteStatus: 'idle' }, true, statusFor)?.icon).toBe('service');
   });
 });
