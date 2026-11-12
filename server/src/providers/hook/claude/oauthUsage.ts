@@ -61,12 +61,18 @@ function readCredentialsText(): Promise<string | null> {
     }
   };
   // macOS keeps them in the keychain; the file is only an older CLI's leftover.
+  // `security` finds the user's keychains under $HOME, so it gets the account's
+  // real home: a server run with another HOME still reads the same item.
   if (process.platform !== 'darwin') return Promise.resolve(fromFile());
   return new Promise((resolve) => {
     execFile(
       'security',
       ['find-generic-password', '-s', CLAUDE_KEYCHAIN_SERVICE, '-w'],
-      { timeout: CLAUDE_KEYCHAIN_TIMEOUT_MS, encoding: 'utf-8' },
+      {
+        timeout: CLAUDE_KEYCHAIN_TIMEOUT_MS,
+        encoding: 'utf-8',
+        env: { ...process.env, HOME: os.userInfo().homedir },
+      },
       (err, stdout) => resolve(err ? fromFile() : stdout),
     );
   });

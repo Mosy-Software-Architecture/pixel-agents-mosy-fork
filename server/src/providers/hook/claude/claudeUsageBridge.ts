@@ -41,7 +41,7 @@ import {
 
 /** Shown before the user confirms the install (Settings → Usage Bars). */
 export const USAGE_BRIDGE_DISCLOSURE = [
-  'To show your remaining weekly and 5-hour usage in the top-left corner, Pixel Agents ' +
+  'To show your remaining plan usage in the top-left corner, Pixel Agents ' +
     'wraps your status line in ~/.claude/settings.json. It keeps working and looks the same ' +
     '(with no status line, Claude Code hides some footer hints). A one-time backup is saved as ' +
     `settings.json${SETTINGS_BACKUP_SUFFIX}.`,
