@@ -100,3 +100,10 @@ export const CLAUDE_SUBAGENT_TOOLS: ReadonlySet<string> = new Set(['Task', 'Agen
 export const CONVERSATION_TITLE_SCAN_BYTES = 256 * 1024;
 /** A title longer than this is cut, with an ellipsis. */
 export const CONVERSATION_TITLE_MAX_CHARS = 120;
+/** The /color name that resets a session's colour (no colour). */
+export const CLAUDE_DEFAULT_AGENT_COLOR = 'default';
+
+/** Claude Code's live-process registry: one `<pid>.json` per running CLI,
+ *  under its config directory (`$CLAUDE_CONFIG_DIR`, else ~/.claude). */
+export const CLAUDE_SESSIONS_DIR_NAME = 'sessions';
+export const CLAUDE_CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR';

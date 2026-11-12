@@ -9,6 +9,7 @@ import type {
   Directory,
   DirectoryConversations,
   FoundConversation,
+  LiveElsewhere,
 } from '../../core/src/messages.js';
 import type { HookProvider } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
@@ -196,6 +197,28 @@ export function liveSessions(store: AgentStateStore): Map<string, LiveSession> {
   );
 }
 
+/**
+ * The sessions running right now in a terminal the office did not launch, by
+ * session id: what the CLI's own registry of running processes lists
+ * (HookProvider.liveSessions), less the processes in `ownPids` (the office's
+ * terminals). Resuming one of these starts a second process on the session.
+ * Empty when the provider keeps no such registry.
+ */
+export function sessionsLiveElsewhere(
+  provider: HookProvider,
+  ownPids: ReadonlySet<number>,
+): Map<string, LiveElsewhere> {
+  const elsewhere = new Map<string, LiveElsewhere>();
+  for (const session of provider.liveSessions?.() ?? []) {
+    if (ownPids.has(session.pid) || elsewhere.has(session.sessionId)) continue;
+    elsewhere.set(session.sessionId, {
+      ...(session.name ? { name: session.name } : {}),
+      ...(session.status ? { status: session.status } : {}),
+    });
+  }
+  return elsewhere;
+}
+
 /** A resumable session id: a UUID, never anything a CLI could read as a flag. */
 const SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -270,6 +293,7 @@ function conversationOf(
   provider: HookProvider,
   live: ReadonlyMap<string, LiveSession>,
   looks: Looks,
+  elsewhere: ReadonlyMap<string, LiveElsewhere>,
 ): Conversation | null {
   const sessionId = path.basename(file.path, transcriptSuffix(provider.sessionFilePattern));
   const running = live.get(sessionId);
@@ -283,6 +307,7 @@ function conversationOf(
     palette: look?.palette,
     repeat: look?.repeat,
     agentId: running?.agentId,
+    liveElsewhere: elsewhere.get(sessionId),
   };
 }
 
@@ -310,13 +335,15 @@ function clampLimit(count: number): number {
  * the coding agent titles it) and past ones, by when they were last written,
  * at most the Directory's `limits` entry (else CONVERSATIONS_PER_DIRECTORY)
  * of them all told; `more` says older ones exist. A past one without a title
- * (a session that never got a prompt) is left out.
+ * (a session that never got a prompt) is left out. One running in a terminal
+ * the office did not launch carries `liveElsewhere` (sessionsLiveElsewhere).
  */
 export function listConversations(
   directories: readonly Directory[],
   provider: HookProvider,
   live: ReadonlyMap<string, LiveSession>,
   limits: ReadonlyMap<string, number> = new Map(),
+  elsewhere: ReadonlyMap<string, LiveElsewhere> = new Map(),
 ): DirectoryConversations[] {
   const looks = readLooks();
   const found = new Set<string>();
@@ -328,10 +355,10 @@ export function listConversations(
       found.add(file.path);
       // Past the cap, titles are read only until one says there are more.
       if (conversations.length >= limit) {
-        if (!more) more = conversationOf(file, provider, live, looks) !== null;
+        if (!more) more = conversationOf(file, provider, live, looks, elsewhere) !== null;
         continue;
       }
-      const conversation = conversationOf(file, provider, live, looks);
+      const conversation = conversationOf(file, provider, live, looks, elsewhere);
       if (conversation) conversations.push(conversation);
     }
     return {
@@ -389,6 +416,7 @@ export function searchConversations(
   provider: HookProvider,
   live: ReadonlyMap<string, LiveSession>,
   { query, directoryPath, limit }: ConversationQuery,
+  elsewhere: ReadonlyMap<string, LiveElsewhere> = new Map(),
 ): { results: FoundConversation[]; more: boolean } {
   const looks = readLooks();
   const files = directories
@@ -400,7 +428,7 @@ export function searchConversations(
   const results: FoundConversation[] = [];
   const sessions = new Set<string>();
   for (const { file, directory } of files) {
-    const conversation = conversationOf(file, provider, live, looks);
+    const conversation = conversationOf(file, provider, live, looks, elsewhere);
     if (!conversation || sessions.has(conversation.sessionId)) continue;
     if (!titleMatches(conversation.title, query)) continue;
     if (results.length === limit) return { results, more: true };

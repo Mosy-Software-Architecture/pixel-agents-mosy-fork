@@ -17,10 +17,15 @@ import {
   recordConversationLooks,
   resumeRequest,
   searchConversations,
+  sessionsLiveElsewhere,
 } from '../src/conversations.js';
 import { claudeProvider } from '../src/providers/hook/claude/claude.js';
 import { CONVERSATION_TITLE_SCAN_BYTES } from '../src/providers/hook/claude/constants.js';
-import { conversationTitle } from '../src/providers/hook/claude/conversationTitle.js';
+import {
+  conversationTitle,
+  sessionInfo,
+  sessionInfoFromRecord,
+} from '../src/providers/hook/claude/conversationTitle.js';
 
 /**
  * The sidebar's recent conversations: Claude's own titles read off the
@@ -105,6 +110,114 @@ describe('conversations', () => {
     it('has none for a session never prompted, or a missing file', () => {
       expect(conversationTitle(transcript(uuid(4), line({ type: 'user' }), 1))).toBeUndefined();
       expect(conversationTitle(path.join(dir, 'missing.jsonl'))).toBeUndefined();
+    });
+  });
+
+  describe('sessionInfo', () => {
+    it('reads the newest name, colour and agent setting, a rename over a generated title', () => {
+      const file = transcript(
+        uuid(1),
+        line({ type: 'agent-color', agentColor: 'blue' }) +
+          line({ type: 'ai-title', aiTitle: 'Generated' }) +
+          line({ type: 'custom-title', customTitle: 'lead' }) +
+          line({ type: 'agent-setting', agentSetting: 'tools:lead' }) +
+          line({ type: 'agent-color', agentColor: 'Red' }) +
+          line({ type: 'ai-title', aiTitle: 'Later' }),
+        1,
+      );
+      expect(sessionInfo(file)).toEqual({
+        title: 'lead',
+        titleIsUsers: true,
+        color: 'red',
+        agentSetting: 'tools:lead',
+      });
+    });
+
+    it('names a session by its generated title, never by its last prompt', () => {
+      const titled = transcript(uuid(2), line({ type: 'ai-title', aiTitle: 'Fix login' }), 1);
+      expect(sessionInfo(titled)).toEqual({ title: 'Fix login' });
+      const prompted = transcript(uuid(3), line({ type: 'last-prompt', lastPrompt: 'hi' }), 1);
+      expect(sessionInfo(prompted)).toEqual({});
+      expect(sessionInfo(path.join(dir, 'missing.jsonl'))).toEqual({});
+    });
+
+    it('takes a colour reset in the tail over a colour in the head', () => {
+      const filler = line({ type: 'user', text: 'x'.repeat(CONVERSATION_TITLE_SCAN_BYTES * 2) });
+      const reset = transcript(
+        uuid(4),
+        line({ type: 'custom-title', customTitle: 'Early' }) +
+          line({ type: 'agent-color', agentColor: 'red' }) +
+          filler +
+          line({ type: 'ai-title', aiTitle: 'Late' }) +
+          line({ type: 'agent-color', agentColor: 'default' }),
+        1,
+      );
+      expect(sessionInfo(reset)).toEqual({ title: 'Early', titleIsUsers: true });
+      const kept = transcript(
+        uuid(5),
+        line({ type: 'agent-color', agentColor: 'green' }) +
+          filler +
+          line({ type: 'ai-title', aiTitle: 'Late' }),
+        1,
+      );
+      expect(sessionInfo(kept)).toEqual({ title: 'Late', color: 'green' });
+    });
+
+    it('reads one record at a time, and nothing from other records', () => {
+      expect(sessionInfoFromRecord({ type: 'custom-title', customTitle: ' a\nb ' })).toEqual({
+        kind: 'title',
+        title: 'a b',
+        byUser: true,
+      });
+      expect(sessionInfoFromRecord({ type: 'ai-title', aiTitle: 'x' })).toMatchObject({
+        byUser: false,
+      });
+      expect(sessionInfoFromRecord({ type: 'agent-color', agentColor: 'DEFAULT' })).toEqual({
+        kind: 'color',
+        color: undefined,
+      });
+      expect(sessionInfoFromRecord({ type: 'agent-color', agentColor: 'teal' })).toEqual({
+        kind: 'color',
+        color: 'teal',
+      });
+      expect(sessionInfoFromRecord({ type: 'custom-title', customTitle: '  ' })).toBeNull();
+      expect(sessionInfoFromRecord({ type: 'user' })).toBeNull();
+      expect(sessionInfoFromRecord('nope')).toBeNull();
+    });
+  });
+
+  describe('sessions live elsewhere', () => {
+    const withRunning = (sessions: Array<{ sessionId: string; pid: number; status?: string }>) =>
+      ({ ...provider, liveSessions: () => sessions }) as HookProvider;
+
+    it("marks a session another terminal runs, not one of the office's own", () => {
+      transcript(uuid(1), line({ type: 'ai-title', aiTitle: 'Kitty' }), 2);
+      transcript(uuid(2), line({ type: 'ai-title', aiTitle: 'Ours' }), 1);
+      const running = withRunning([
+        { sessionId: uuid(1), pid: 100, status: 'idle' },
+        { sessionId: uuid(2), pid: 200, status: 'busy' },
+      ]);
+      const elsewhere = sessionsLiveElsewhere(running, new Set([200]));
+      expect([...elsewhere]).toEqual([[uuid(1), { status: 'idle' }]]);
+
+      const [listed] = listConversations([directory], running, new Map(), undefined, elsewhere);
+      expect(listed.conversations.map((c) => [c.title, c.liveElsewhere])).toEqual([
+        ['Kitty', { status: 'idle' }],
+        ['Ours', undefined],
+      ]);
+      const { results } = searchConversations(
+        [directory],
+        running,
+        new Map(),
+        { query: 'kitty', limit: 5 },
+        elsewhere,
+      );
+      expect(results[0].conversation.liveElsewhere).toEqual({ status: 'idle' });
+    });
+
+    it('marks nothing for a provider that keeps no registry', () => {
+      const none = { ...provider, liveSessions: undefined } as HookProvider;
+      expect(sessionsLiveElsewhere(none, new Set()).size).toBe(0);
     });
   });
 

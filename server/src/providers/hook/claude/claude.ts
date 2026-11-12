@@ -23,7 +23,8 @@ import {
   CLAUDE_SUBAGENT_TOOLS,
   CLAUDE_TERMINAL_NAME_PREFIX,
 } from './constants.js';
-import { conversationTitle } from './conversationTitle.js';
+import { conversationTitle, sessionInfo, sessionInfoFromRecord } from './conversationTitle.js';
+import { liveSessions } from './liveSessions.js';
 import { isInheritedClaudeSessionEnv } from './sessionEnv.js';
 
 // ── formatToolStatus: moved from src/transcriptParser.ts ──
@@ -347,6 +348,9 @@ export const claudeProvider: HookProvider = {
   buildLaunchCommand,
   isInheritedSessionEnv: isInheritedClaudeSessionEnv,
   conversationTitle,
+  sessionInfo,
+  sessionInfoFromRecord,
+  liveSessions: () => liveSessions(),
 
   team: claudeTeamProvider,
   usageBridge: claudeUsageBridge,

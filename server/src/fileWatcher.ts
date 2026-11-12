@@ -47,6 +47,7 @@ import { clearContextUsage, seedContextUsage } from './contextUsage.js';
 import type { DismissalTracker } from './dismissalTracker.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { pathsMatch } from './pathKey.js';
+import { seedSessionInfo } from './sessionInfo.js';
 import type { SubagentWatch } from './subagentWatch.js';
 import { cancelPermissionTimer, cancelWaitingTimer, clearAgentActivity } from './timerManager.js';
 import { getHookProvider, processTranscriptLine } from './transcriptParser.js';
@@ -114,6 +115,8 @@ export function startFileWatching(
   // give an agent adopted or restored mid-session a context gauge without
   // replaying its whole transcript.
   seedContextUsage(agentId, agents, getHookProvider());
+  // Likewise its session's name and colour, for the label over its character.
+  seedSessionInfo(agentId, agents, getHookProvider());
 
   // Single polling approach: reliable on all platforms (macOS, Linux, WSL2, Windows).
   // Previously used triple-redundant fs.watch + fs.watchFile + setInterval, but

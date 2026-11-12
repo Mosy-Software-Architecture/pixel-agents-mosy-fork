@@ -328,6 +328,21 @@ export const CONTEXT_GAUGE_BG = '#222';
 export const TEAM_LEAD_COLOR = '#ffd700';
 export const TEAM_ROLE_COLOR = '#66aaff';
 
+// ── Session name and colour (the label over each character) ──
+/** The colours a session can be marked with (Claude Code's /color), as the
+ *  label tints its name: lighter than the CLI's own so each reads on the
+ *  label's dark panel. A name not listed shows untinted. */
+export const SESSION_COLORS: Readonly<Record<string, string>> = {
+  red: '#ff6b6b',
+  orange: '#ffa94d',
+  yellow: '#ffd43b',
+  green: '#69db7c',
+  cyan: '#66d9e8',
+  blue: '#74c0fc',
+  purple: '#b197fc',
+  pink: '#f783ac',
+};
+
 // ── Pets ────────────────────────────────────────────────────────
 /** Walking speed in world pixels per second (matches character walk speed visually but slower). */
 export const PET_WALK_SPEED_PX_PER_SEC = 32;

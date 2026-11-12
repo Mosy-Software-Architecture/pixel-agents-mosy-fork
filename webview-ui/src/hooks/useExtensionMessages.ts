@@ -18,6 +18,7 @@ import { setGhostHeadlessAgents as setRendererGhostHeadlessAgents } from '../off
 import { setFloorSprites } from '../office/floorTiles.js';
 import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js';
+import { clearAgentSessionInfo, setAgentSessionInfo } from '../office/sessionLabel.js';
 import { setCarpetSprites } from '../office/sprites/carpetTiles.js';
 import { setPetTemplates } from '../office/sprites/petSpriteData.js';
 import {
@@ -300,6 +301,7 @@ export function useExtensionMessages(
       setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id));
       os.removeAgent(id);
       clearAgentContextUsed(id);
+      clearAgentSessionInfo(id);
     };
 
     // A dropped socket (a phone's screen going off, a server restart) loses
@@ -905,6 +907,12 @@ export function useExtensionMessages(
         const id = msg.id as number;
         os.setAgentContext(id, msg.contextTokens as number, msg.maxContextTokens as number);
         setAgentContextUsed(id, msg.contextTokens as number, msg.maxContextTokens as number);
+      } else if (msg.type === 'agentSessionInfo') {
+        setAgentSessionInfo(msg.id as number, {
+          title: msg.title as string | undefined,
+          color: msg.color as string | undefined,
+          agentSetting: msg.agentSetting as string | undefined,
+        });
       }
     };
     const unsubscribe = transport.onMessage(handler);

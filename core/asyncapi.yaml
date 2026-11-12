@@ -100,6 +100,8 @@ components:
         - $ref: '#/components/schemas/AgentTeamInfo'
         # Context window
         - $ref: '#/components/schemas/AgentContextUsage'
+        # Session name and colour
+        - $ref: '#/components/schemas/AgentSessionInfo'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
@@ -476,6 +478,35 @@ components:
           type: integer
         maxContextTokens:
           type: integer
+
+    AgentSessionInfo:
+      description: |
+        What the coding agent records about an agent's session besides its
+        activity: the name the user gave it (else the one the CLI generated),
+        the colour the user marked it with, and the agent definition it runs
+        as. The label over the character shows the name, tinted with the
+        colour. Each message is the whole state: an absent field is not set
+        (or was cleared). Sent when it changes and on every connect; never
+        for sub-agents.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: agentSessionInfo
+        id:
+          type: integer
+        title:
+          type: string
+        color:
+          type: string
+          description: >-
+            The colour's name as the CLI gives it, lower case (Claude Code's
+            /color: red, orange, yellow, green, cyan, blue, purple, pink). A
+            name the office doesn't know shows untinted.
+        agentSetting:
+          type: string
+          description: The agent definition the session runs as (Claude Code's --agent), e.g. "plugin:agent".
 
     LayoutLoaded:
       description: |
@@ -1138,6 +1169,23 @@ components:
         agentId:
           type: integer
           description: The agent in the office running it right now; absent for a past conversation.
+        liveElsewhere:
+          $ref: '#/components/schemas/LiveElsewhere'
+
+    LiveElsewhere:
+      description: >-
+        The conversation's session is running right now in a terminal the
+        office did not launch (as the CLI's own registry of running processes
+        says): resuming it would start a second process on the same session.
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: The session's name in that terminal.
+        status:
+          type: string
+          description: What that process is doing, in the CLI's words (Claude Code - busy, idle, waiting, shell).
 
     AgentDiagnostics:
       description: Connection diagnostics for all agents (response to requestDiagnostics).
