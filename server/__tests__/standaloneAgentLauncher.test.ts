@@ -5,13 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { HookProvider } from '../../core/src/provider.js';
 import { AgentRuntime } from '../src/agentRuntime.js';
+import { createAgentState } from '../src/agentState.js';
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { JSONL_POLL_INTERVAL_MS } from '../src/constants.js';
+import { startFileWatching } from '../src/fileWatcher.js';
 import { claudeProvider } from '../src/providers/hook/claude/claude.js';
 import type { IPty, PtyModule, PtySpawnOptions } from '../src/terminal/ptyModule.js';
 import { PtySessionManager } from '../src/terminal/ptySessionManager.js';
 import { launchStandaloneAgent } from '../src/terminal/standaloneAgentLauncher.js';
 import { sessionMarkersUnset } from '../src/terminal/terminalEnv.js';
+import type { AgentState } from '../src/types.js';
 
 /**
  * launchStandaloneAgent is the standalone counterpart of the VS Code adapter's
@@ -337,6 +340,103 @@ describe('launchStandaloneAgent', () => {
 
     expect(store.has(id)).toBe(false);
     expect(store.has(id + 1)).toBe(false);
+  });
+
+  // ── A session another terminal runs too ──────────────────────
+
+  describe('a session another terminal runs too', () => {
+    const sessionId = '0b8a701c-400d-41ea-801f-40de5e070a8d';
+    let transcript: string;
+    // The CLI's registry: the session runs in a terminal the office did not launch.
+    const runningElsewhere = () => provider({ liveSessions: () => [{ sessionId, pid: 777 }] });
+
+    /** An agent adopted from that terminal: Headless, watched, wearing palette 5. */
+    function headlessAgent(): AgentState {
+      const agent = createAgentState({
+        id: 4,
+        sessionId,
+        isExternal: true,
+        projectDir,
+        jsonlFile: transcript,
+        palette: 5,
+        repeat: 1,
+        fileOffset: 10,
+      });
+      store.set(4, agent);
+      store.nextAgentId.current = 5;
+      runtime.registerAgent(sessionId, 4);
+      startFileWatching(
+        4,
+        transcript,
+        store,
+        runtime.fileWatchers,
+        runtime.pollingTimers,
+        runtime.waitingTimers,
+        runtime.permissionTimers,
+      );
+      return agent;
+    }
+
+    beforeEach(() => {
+      transcript = path.join(projectDir, `${sessionId}.jsonl`);
+      fs.writeFileSync(transcript, '{"type":"user"}\n{"type":"assistant"}\n');
+    });
+
+    it('a Headless agent running it takes the terminal: same agent, same look, no second character', () => {
+      const harness = workingPtyManager();
+      const agent = headlessAgent();
+      const added: number[] = [];
+      store.on('agentAdded', (id: number) => added.push(id));
+
+      const id = launchStandaloneAgent(
+        { store, runtime, ptyManager: harness.manager, provider: runningElsewhere() },
+        { directoryPath: tempDir, resume: { sessionId, transcript, agentId: 4 } },
+      );
+
+      expect(id).toBe(4);
+      expect(store.get(4)).toBe(agent);
+      expect(agent).toMatchObject({ isExternal: false, palette: 5, repeat: 1, fileOffset: 10 });
+      expect(store.size).toBe(1);
+      expect(added).toEqual([]);
+      expect(store.nextAgentId.current).toBe(5);
+      expect(harness.spawnArgs[0].args).toEqual(['--resume', sessionId]);
+      expect(broadcasts).toContainEqual({ type: 'terminalSessionOpened', agentId: 4 });
+      // Watched already: no second watch on the same transcript.
+      expect(runtime.jsonlPollTimers.has(4)).toBe(false);
+    });
+
+    it('its terminal closing leaves the agent Headless while the other terminal still runs it', () => {
+      const harness = workingPtyManager();
+      headlessAgent();
+      launchStandaloneAgent(
+        { store, runtime, ptyManager: harness.manager, provider: runningElsewhere() },
+        { directoryPath: tempDir, resume: { sessionId, transcript, agentId: 4 } },
+      );
+
+      harness.spawned[0].exit(0);
+
+      expect(broadcasts).toContainEqual({ type: 'terminalSessionClosed', agentId: 4, exitCode: 0 });
+      expect(store.get(4)).toMatchObject({ isExternal: true, palette: 5 });
+      // Not dismissed: a later scan or hook finds it in the office as it is.
+      expect(runtime.dismissalTracker.isDismissed(transcript)).toBe(false);
+    });
+
+    it('with no other terminal on it, its closing removes the agent as usual', () => {
+      const harness = workingPtyManager();
+      const id = launchStandaloneAgent(
+        {
+          store,
+          runtime,
+          ptyManager: harness.manager,
+          provider: provider({ liveSessions: () => [] }),
+        },
+        { directoryPath: tempDir, resume: { sessionId, transcript } },
+      )!;
+
+      harness.spawned[0].exit(0);
+
+      expect(store.has(id)).toBe(false);
+    });
   });
 
   // ── JSONL adoption poll ──────────────────────────────────────

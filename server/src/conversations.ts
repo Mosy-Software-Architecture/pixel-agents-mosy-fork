@@ -176,12 +176,13 @@ export function findTranscript(
     .find((file) => fs.existsSync(file));
 }
 
-/** An agent in the office, as the list needs it: which one runs a session
- *  and what it wears. */
+/** An agent in the office, as the list needs it: which one runs a session,
+ *  what it wears, and whether it has no terminal here (`headless`). */
 export interface LiveSession {
   agentId: number;
   palette?: number;
   repeat?: number;
+  headless?: true;
 }
 
 /** Which agent in the office runs each session (keyed by session id). */
@@ -192,7 +193,12 @@ export function liveSessions(store: AgentStateStore): Map<string, LiveSession> {
       .filter(([, agent]) => runsOwnSession(agent, store))
       .map(([id, agent]) => [
         agent.sessionId,
-        { agentId: id, palette: agent.palette, repeat: agent.repeat },
+        {
+          agentId: id,
+          palette: agent.palette,
+          repeat: agent.repeat,
+          ...(agent.isExternal ? { headless: true as const } : {}),
+        },
       ]),
   );
 }
@@ -229,14 +235,19 @@ export interface ResumeRequest {
   transcript: string;
   /** The look its agent last had, if the office ever saw it. */
   look: ConversationLook | undefined;
+  /** The Headless agent running it (adopted from another terminal): it takes
+   *  the new terminal, keeping its id, character and seat. */
+  agentId?: number;
 }
 
 /**
  * A `resumeConversation` request, or null when there is nothing to resume:
  * the provider lists no conversations (only one that names them is asked to
  * resume one, see HookProvider.buildLaunchCommand), the id isn't a UUID (it
- * becomes a CLI argument), the Directory isn't a string, an agent in the
- * office already runs the session, or its transcript doesn't exist.
+ * becomes a CLI argument), the Directory isn't a string, an agent with a
+ * terminal in the office already runs the session, or its transcript doesn't
+ * exist. A session run by a Headless agent is resumed into that agent
+ * (`agentId`): the CLI runs a second process on the same session id.
  */
 export function resumeRequest(
   store: AgentStateStore,
@@ -247,11 +258,19 @@ export function resumeRequest(
   const { sessionId, directoryPath } = msg;
   if (typeof sessionId !== 'string' || !SESSION_ID_PATTERN.test(sessionId)) return null;
   if (typeof directoryPath !== 'string') return null;
-  // Already in the office: nothing to bring back.
-  if ([...store].some(([, agent]) => agent.sessionId === sessionId)) return null;
+  const holders = [...store.values()].filter((agent) => agent.sessionId === sessionId);
+  const headless = holders.find((agent) => agent.isExternal && runsOwnSession(agent, store));
+  // Already in the office with a terminal: nothing to bring back.
+  if (holders.length > 0 && !headless) return null;
   const transcript = findTranscript(provider, directoryPath, sessionId);
   if (!transcript) return null;
-  return { sessionId, directoryPath, transcript, look: conversationLook(sessionId) };
+  return {
+    sessionId,
+    directoryPath,
+    transcript,
+    look: conversationLook(sessionId),
+    ...(headless ? { agentId: headless.id } : {}),
+  };
 }
 
 /** A transcript as the listing sees it. */
@@ -320,6 +339,7 @@ function conversationOf(
     palette: look?.palette,
     repeat: look?.repeat,
     agentId: running?.agentId,
+    ...(running?.headless ? { headless: true } : {}),
     liveElsewhere: elsewhere.get(sessionId),
   };
 }
@@ -349,7 +369,8 @@ function clampLimit(count: number): number {
  * at most the Directory's `limits` entry (else CONVERSATIONS_PER_DIRECTORY)
  * of them all told; `more` says older ones exist. A past one without a title
  * (a session that never got a prompt) is left out. One running in a terminal
- * the office did not launch carries `liveElsewhere` (sessionsLiveElsewhere).
+ * the office did not launch carries `liveElsewhere` (sessionsLiveElsewhere),
+ * one whose agent has no terminal here `headless`.
  */
 export function listConversations(
   directories: readonly Directory[],

@@ -553,6 +553,32 @@ describe('conversations', () => {
       ).toBeNull();
     });
 
+    it('resumes a session a Headless agent runs into that agent, never one an agent with a terminal runs', () => {
+      const store = new AgentStateStore();
+      const file = transcript(uuid(11), line({ type: 'ai-title', aiTitle: 'Kitty' }), 1);
+      transcript(uuid(12), line({ type: 'ai-title', aiTitle: 'Ours' }), 1);
+      // Adopted from a terminal the office did not launch: no terminal here.
+      store.set(5, { ...agent(5, uuid(11)), isExternal: true });
+      store.set(6, agent(6, uuid(12)));
+      expect(resumeRequest(store, provider, { sessionId: uuid(11), directoryPath: '/w' })).toEqual({
+        sessionId: uuid(11),
+        directoryPath: '/w',
+        transcript: file,
+        look: undefined,
+        agentId: 5,
+      });
+      expect(
+        resumeRequest(store, provider, { sessionId: uuid(12), directoryPath: '/w' }),
+      ).toBeNull();
+
+      // The list says which: the Headless agent's row resumes, the other goes to its agent.
+      const [listed] = listConversations([directory], provider, liveSessions(store));
+      expect(listed.conversations.map((c) => [c.title, c.agentId, c.headless])).toEqual([
+        ['Kitty', 5, true],
+        ['Ours', 6, undefined],
+      ]);
+    });
+
     it('refuses for a provider that lists no conversations (it is never asked to resume)', () => {
       transcript(uuid(1), line({ type: 'ai-title', aiTitle: 'Here' }), 1);
       const untitled: HookProvider = { ...provider, conversationTitle: undefined };

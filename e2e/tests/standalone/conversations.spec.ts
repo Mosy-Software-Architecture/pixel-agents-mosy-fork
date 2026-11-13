@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { expect, test } from '../../fixtures/standalone';
+import { sendHookEvent, sessionStartStartup, stop } from '../../helpers/hooks';
 import { arrangeNextClaudeInvocation, claudeScenario } from '../../helpers/mock-claude';
 import { agentCard, expectOverlayCount } from '../../helpers/office';
 import { buildTurnDurationRecord } from '../../helpers/team';
@@ -245,6 +246,97 @@ test.describe('Standalone / conversation sidebar', () => {
     await expect
       .poll(() => invocations(standalone.mockLogFile))
       .toContain(`args=--resume ${uuid(2)}`);
+  });
+
+  test('a session another terminal runs, in the office without a terminal, resumes here at once as the same agent @area:standalone', async ({
+    page,
+    standalone,
+  }) => {
+    await setSettings(page, { alwaysShowLabels: true, watchAllSessions: true });
+    const sessionId = '00000000-0000-4000-8000-000000000042';
+    const projectDir = path.join(
+      standalone.tmpHome,
+      '.claude',
+      'projects',
+      fs.realpathSync(standalone.workspaceDir).replace(/[^a-zA-Z0-9-]/g, '-'),
+    );
+    fs.mkdirSync(projectDir, { recursive: true });
+    const transcriptPath = path.join(projectDir, `${sessionId}.jsonl`);
+    fs.writeFileSync(
+      transcriptPath,
+      JSON.stringify({ type: 'ai-title', aiTitle: 'Open in kitty', sessionId }) + '\n',
+    );
+    // The CLI's registry of running processes: this test's own process stands
+    // in for the other terminal (it is alive, and not one of the office's).
+    const registry = path.join(standalone.tmpHome, '.claude', 'sessions');
+    fs.mkdirSync(registry, { recursive: true });
+    fs.writeFileSync(
+      path.join(registry, `${process.pid}.json`),
+      JSON.stringify({ pid: process.pid, sessionId, name: 'kitty-tab', status: 'idle' }),
+    );
+
+    // Adopted through its hooks: an agent in the office with no terminal here.
+    await sendHookEvent(
+      standalone.hookServerConfig,
+      sessionStartStartup(sessionId, standalone.workspaceDir, transcriptPath),
+    );
+    await sendHookEvent(standalone.hookServerConfig, stop(sessionId));
+    await expectOverlayCount(page, 1);
+    const before = await page.evaluate(() => {
+      const hooks = window.__pixelAgentsTestHooks!;
+      const ch = hooks.getCharacters!().find((c) => !c.isGreeter)!;
+      const seat = hooks.getAgentSeats!().find((s) => s.id === ch.id)!;
+      return { id: ch.id, palette: ch.palette, repeat: ch.repeat, seatId: seat.seatId };
+    });
+    await expect(page.locator('.xterm')).toHaveCount(0);
+
+    const row = page
+      .getByTestId('conversation-sidebar')
+      .getByTestId('conversation-row')
+      .filter({ hasText: 'Open in kitty' });
+    await expect(row.getByTestId('conversation-live-elsewhere')).toHaveText(
+      'Open elsewhere · idle',
+    );
+
+    // One press resumes it: no confirmation, claude --resume on the same session.
+    await arrangeNextClaudeInvocation(
+      standalone.tmpHome,
+      claudeScenario('resumed beside kitty').holdOpenFor(60_000).build(),
+    );
+    await row.click();
+    await expect
+      .poll(() => invocations(standalone.mockLogFile))
+      .toContain(`args=--resume ${sessionId}`);
+    await expect(page.locator('.xterm').first()).toContainText('mock claude session', {
+      timeout: 15_000,
+    });
+    // The same agent took the terminal: one character, same id, look and seat.
+    await expectOverlayCount(page, 1);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const hooks = window.__pixelAgentsTestHooks!;
+          const chars = hooks.getCharacters!().filter((c) => !c.isGreeter);
+          const ch = chars[0];
+          const seat = ch && hooks.getAgentSeats!().find((s) => s.id === ch.id);
+          return chars.length === 1
+            ? { id: ch.id, palette: ch.palette, repeat: ch.repeat, seatId: seat?.seatId }
+            : chars.length;
+        }),
+      )
+      .toEqual(before);
+    // Its row now goes to the agent: the badge stays, as information.
+    await expect(row.getByTestId('conversation-live-elsewhere')).toHaveText(
+      'Open elsewhere · idle',
+    );
+
+    // Closing the office's terminal ends only its process: the other
+    // terminal still runs the session, so the agent stays, terminal-less.
+    await agentCard(page, before.id).locator('button[title="Close agent"]').click();
+    await expect(page.locator('.xterm')).toHaveCount(0);
+    await page.waitForTimeout(500);
+    await expectOverlayCount(page, 1);
+    await expect(agentCard(page, before.id)).toHaveCount(1);
   });
 
   test('a Directory added or deleted gains or loses its section at once, no reload @area:standalone', async ({

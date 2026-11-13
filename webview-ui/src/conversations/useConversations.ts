@@ -14,13 +14,17 @@ import { transport } from '../transport/index.js';
  *  conversation leaves the list), left (it joins), a reconnect resynced, an
  *  agent's turn started or ended (its transcript now exists, or its title
  *  was written — the desktop sidebar stays open, so nothing else would ask),
- *  or a Directory was added, renamed or removed (one section per Directory). */
+ *  a Directory was added, renamed or removed (one section per Directory), or
+ *  an agent gained or lost its terminal (a Headless one's row resumes, one
+ *  with a terminal goes to it). */
 const REFRESH_ON = new Set([
   'agentCreated',
   'agentClosed',
   'existingAgents',
   'agentStatus',
   'directoriesLoaded',
+  'terminalSessionOpened',
+  'terminalSessionClosed',
 ]);
 
 export interface ConversationList {
@@ -93,7 +97,8 @@ export function openRemoteConversation(host: string, sessionId: string): void {
 }
 
 /** Resume a past conversation: the server relaunches it as the character its
- *  agent wore (an agentCreated follows, then its terminal). */
+ *  agent wore (an agentCreated follows, then its terminal). A Headless agent
+ *  running it takes the terminal instead (only its terminal follows). */
 export function resumeConversation(sessionId: string, directoryPath: string): void {
   transport.send({ type: 'resumeConversation', sessionId, directoryPath });
 }

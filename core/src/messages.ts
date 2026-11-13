@@ -525,6 +525,7 @@ export interface Conversation {
   palette?: number;
   repeat?: number;
   agentId?: number;
+  headless?: boolean;
   liveElsewhere?: LiveElsewhere;
   remoteStatus?: string;
   remoteKind?: RemoteKind;

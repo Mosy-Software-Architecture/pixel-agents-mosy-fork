@@ -23,6 +23,7 @@ import { createAgentState } from '../agentState.js';
 import type { AgentStateStore } from '../agentStateStore.js';
 import { JSONL_POLL_INTERVAL_MS } from '../constants.js';
 import { clearContextUsage } from '../contextUsage.js';
+import { sessionsLiveElsewhere } from '../conversations.js';
 import { directoryAt } from '../directories.js';
 import { startFileWatching } from '../fileWatcher.js';
 import { directoryNameFor, hostDirectory } from '../hostDirectory.js';
@@ -50,8 +51,10 @@ export interface LaunchStandaloneAgentOptions {
   palette?: number;
   /** Resume this past session instead of starting a new one: same session
    *  id, same transcript (read from its end), and the seat its agent sat in
-   *  when that one is free. */
-  resume?: { sessionId: string; transcript: string; seatId?: string };
+   *  when that one is free. With `agentId`, the Headless agent running the
+   *  session takes the terminal instead of a new agent coming in: same id,
+   *  character, seat and card, its transcript already watched. */
+  resume?: { sessionId: string; transcript: string; seatId?: string; agentId?: number };
   cols?: number;
   rows?: number;
 }
@@ -93,29 +96,36 @@ export function launchStandaloneAgent(
   const jsonlFile = options.resume?.transcript ?? path.join(dirs[0], `${sessionId}.jsonl`);
   const projectDir = path.dirname(jsonlFile);
 
-  const id = store.nextAgentId.current++;
+  // A Headless agent running the session (its process in a terminal the
+  // office did not launch) takes this terminal: no second character.
+  const headless =
+    options.resume?.agentId !== undefined ? store.get(options.resume.agentId) : undefined;
+  if (headless && !headless.isExternal) return null;
+  const id = headless?.id ?? store.nextAgentId.current++;
 
   // The Directory launched into, if the cwd is one: its name and its default characters.
   const directory = directoryAt(cwd, [hostDirectory()]);
-  const agent = createAgentState({
-    id,
-    sessionId,
-    // Not external: this server owns the process. External agents are the ones
-    // adopted from someone else's terminal, and they're what the stale-check and
-    // restore paths act on -- a PTY agent must be excluded from both.
-    isExternal: false,
-    projectDir,
-    jsonlFile,
-    // The character's origin label (and its Area-mapping key): the name of the
-    // Directory it was launched into, as the user named it — so an entry called
-    // "Side Project" labels its agents that, not "side-project", and the Areas
-    // it was assigned in the modal actually match. Falls back to the basename
-    // for a cwd that is no Directory at all.
-    directoryName: directory?.name ?? directoryNameFor(cwd),
-    providerId: provider.id,
-    seatId: options.resume?.seatId,
-  });
-  if (options.resume) {
+  const agent =
+    headless ??
+    createAgentState({
+      id,
+      sessionId,
+      // Not external: this server owns the process. External agents are the ones
+      // adopted from someone else's terminal, and they're what the stale-check and
+      // restore paths act on -- a PTY agent must be excluded from both.
+      isExternal: false,
+      projectDir,
+      jsonlFile,
+      // The character's origin label (and its Area-mapping key): the name of the
+      // Directory it was launched into, as the user named it — so an entry called
+      // "Side Project" labels its agents that, not "side-project", and the Areas
+      // it was assigned in the modal actually match. Falls back to the basename
+      // for a cwd that is no Directory at all.
+      directoryName: directory?.name ?? directoryNameFor(cwd),
+      providerId: provider.id,
+      seatId: options.resume?.seatId,
+    });
+  if (options.resume && !headless) {
     // Its history is the past: replaying it would resurrect finished tools.
     try {
       agent.fileOffset = fs.statSync(agent.jsonlFile).size;
@@ -143,12 +153,15 @@ export function launchStandaloneAgent(
       rows: options.rows,
     });
   } catch (err) {
-    // Roll the id back so a failed spawn doesn't burn an agent id.
-    store.nextAgentId.current--;
+    // Roll the id back so a failed spawn doesn't burn an agent id (a Headless
+    // agent that was to take it stays as it was).
+    if (!headless) store.nextAgentId.current--;
     console.error(`[Pixel Agents] Terminal: spawn failed: ${String(err)}`);
     return null;
   }
 
+  // Not external from here on: this server owns a process on its session.
+  agent.isExternal = false;
   admitTerminalAgent(deps, agent, session);
   // A fresh session starts with an empty context: a full gauge from the spawn on.
   // A resumed one keeps its gauge, read from its transcript.
@@ -157,7 +170,11 @@ export function launchStandaloneAgent(
   store.persist();
 
   const pid = session.pid !== null ? ` (pid ${session.pid})` : '';
-  const what = options.resume ? `resumed session ${sessionId}` : `spawned ${launch.command}`;
+  const what = headless
+    ? `took a terminal on session ${sessionId}`
+    : options.resume
+      ? `resumed session ${sessionId}`
+      : `spawned ${launch.command}`;
   console.log(`[Pixel Agents] Terminal: Agent ${id} - ${what}${pid} in ${cwd}`);
   return id;
 }
@@ -243,7 +260,9 @@ function relocatedRecord(provider: HookProvider, record: PersistedAgent): Persis
 
 /** What every agent with a terminal gets, launched or reattached: a place in
  *  the office, its drawer tab, its removal when the process ends, and its
- *  transcript watched. */
+ *  transcript watched. When the process ends while another terminal (one the
+ *  office did not launch) still runs its session, the agent stays, Headless,
+ *  as it would have been adopted: its session is still live. */
 export function admitTerminalAgent(
   deps: LaunchStandaloneAgentDeps,
   agent: AgentState,
@@ -268,13 +287,26 @@ export function admitTerminalAgent(
   session.onExit((exit) => {
     console.log(`[Pixel Agents] Terminal: Agent ${id} - exited (code ${exit.exitCode})`);
     store.broadcast({ type: 'terminalSessionClosed', agentId: id, exitCode: exit.exitCode });
-    if (store.has(id)) {
-      runtime.unregisterAgent(agent.sessionId);
-      runtime.closeAgent(id);
+    if (store.get(id) !== agent) return;
+    if (runsElsewhere(deps.provider, agent.sessionId)) {
+      agent.isExternal = true;
+      store.persist();
+      console.log(`[Pixel Agents] Terminal: Agent ${id} - still running elsewhere, kept headless`);
+      return;
     }
+    runtime.unregisterAgent(agent.sessionId);
+    runtime.closeAgent(id);
   });
 
-  startJsonlPoll(deps, id, agent);
+  // A Headless agent taking a terminal is watched already.
+  if (!runtime.pollingTimers.has(id)) startJsonlPoll(deps, id, agent);
+}
+
+/** Whether a process the office did not launch runs `sessionId` right now
+ *  (the CLI's registry; this server's own terminals are excluded by the
+ *  caller, whose process has exited). */
+function runsElsewhere(provider: HookProvider, sessionId: string): boolean {
+  return sessionsLiveElsewhere(provider, new Set()).has(sessionId);
 }
 
 /**

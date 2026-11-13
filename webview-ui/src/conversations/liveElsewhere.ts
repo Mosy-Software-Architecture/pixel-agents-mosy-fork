@@ -1,27 +1,22 @@
 import type { Conversation, LiveElsewhere } from '../../../core/src/messages.js';
 
 /**
- * A conversation still open in a terminal the office did not launch (the
- * server's `liveElsewhere`): resuming it here would run a second process on
- * the same session, so the list asks first.
+ * A conversation whose session runs where the office has no terminal for it:
+ * in a terminal the office did not launch (the server's `liveElsewhere`), or
+ * through a Headless agent (`headless`). Pressing it resumes it here: the CLI
+ * runs a second process on the same session, and a Headless agent takes the
+ * new terminal.
  */
 
-/** Whether pressing the row must ask before resuming: it would resume (no
- *  agent in the office runs it) a session that is open elsewhere. */
-export function resumeNeedsConfirm(conversation: Conversation): boolean {
-  return conversation.agentId === undefined && conversation.liveElsewhere !== undefined;
+/** Whether pressing the row goes to the agent running it (one with a terminal
+ *  in the office), rather than resuming it here. */
+export function goesToAgent(
+  conversation: Conversation,
+): conversation is Conversation & { agentId: number } {
+  return conversation.agentId !== undefined && !conversation.headless;
 }
 
 /** The row's badge: where the session is open, and what it is doing there. */
 export function liveElsewhereBadge(live: LiveElsewhere): string {
   return live.status ? `Open elsewhere · ${live.status}` : 'Open elsewhere';
-}
-
-/** The confirmation's explanation. */
-export function liveElsewhereWarning(live: LiveElsewhere): string {
-  const status = live.status ? ` (${live.status})` : '';
-  return (
-    `Already running in another terminal${status}. ` +
-    'Resuming it here starts a second process on the same session.'
-  );
 }
