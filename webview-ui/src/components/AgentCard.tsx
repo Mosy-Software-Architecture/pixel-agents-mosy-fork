@@ -62,7 +62,7 @@ const CLOSE_MODE: Record<CloseMode, string> = {
 // armed, red while stopping, amber when the stop failed.
 const STOP_COLOR: Record<StopPhase | 'rest', string> = {
   rest: 'text-text-muted! hover:text-status-error!',
-  armed: 'text-status-error! pending-ack-pulse',
+  armed: 'text-status-error!',
   stopping: 'text-status-error! cursor-default',
   failed: 'text-warning! hover:text-status-error!',
 };
@@ -175,7 +175,10 @@ export function AgentCard({
             data-stop-phase={stopState?.phase ?? 'rest'}
             className={`absolute top-0 left-0 z-20 bg-bg-dark! ${STOP_COLOR[stopState?.phase ?? 'rest']} ${CLOSE_MODE[stop]}`}
           >
-            <PixelIcon name="skull" />
+            {/* Armed, only the skull pulses: its dark backing stays solid. */}
+            <span className={`flex ${stopState?.phase === 'armed' ? 'pending-ack-pulse' : ''}`}>
+              <PixelIcon name="skull" />
+            </span>
           </Button>
         )}
       </span>
