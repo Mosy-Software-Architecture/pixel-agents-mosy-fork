@@ -3,16 +3,22 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { HookProvider } from '../../core/src/provider.js';
+import type { BackgroundSessionStart, HookProvider } from '../../core/src/provider.js';
 import { AgentRuntime } from '../src/agentRuntime.js';
 import { createAgentState } from '../src/agentState.js';
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { JSONL_POLL_INTERVAL_MS } from '../src/constants.js';
+import { FileStateAdapter } from '../src/fileStateAdapter.js';
 import { startFileWatching } from '../src/fileWatcher.js';
 import { claudeProvider } from '../src/providers/hook/claude/claude.js';
 import type { IPty, PtyModule, PtySpawnOptions } from '../src/terminal/ptyModule.js';
 import { PtySessionManager } from '../src/terminal/ptySessionManager.js';
-import { launchStandaloneAgent } from '../src/terminal/standaloneAgentLauncher.js';
+import {
+  keepBackgroundAgentsOnShutdown,
+  launchBackgroundAgent,
+  launchStandaloneAgent,
+  restoreBackgroundAgents,
+} from '../src/terminal/standaloneAgentLauncher.js';
 import { sessionMarkersUnset } from '../src/terminal/terminalEnv.js';
 import type { AgentState } from '../src/types.js';
 
@@ -436,6 +442,260 @@ describe('launchStandaloneAgent', () => {
       harness.spawned[0].exit(0);
 
       expect(store.has(id)).toBe(false);
+    });
+  });
+
+  // ── Claude Code's background service (`claude --bg`) ─────────
+
+  describe('a session in the background service', () => {
+    const sessionId = '7fdcf719-fd04-418f-b911-6a99f154c1e5';
+    const backgroundId = '7fdcf719';
+    let transcript: string;
+    /** `claude agents --json` (merged with the registry) lists it, worker pid 25624. */
+    const inBackground = (overrides: Partial<HookProvider> = {}) =>
+      provider({
+        liveSessions: () => [
+          { sessionId, pid: 25624, kind: 'background', backgroundId, status: 'idle' },
+        ],
+        ...overrides,
+      });
+
+    beforeEach(() => {
+      transcript = path.join(projectDir, `${sessionId}.jsonl`);
+    });
+
+    it('+ Agent starts it with the CLI and attaches a terminal to it, the agent bound to its session', async () => {
+      const harness = workingPtyManager();
+      const starts: Array<{ cwd: string; bypassPermissions?: boolean }> = [];
+      const start: HookProvider['startBackgroundSession'] = (cwd, opts) => {
+        starts.push({ cwd, bypassPermissions: opts.bypassPermissions });
+        // The server's own session markers never reach the CLI.
+        expect(opts.env.CLAUDECODE).toBeUndefined();
+        return Promise.resolve<BackgroundSessionStart>({ sessionId, backgroundId });
+      };
+      vi.stubEnv('CLAUDECODE', '1');
+
+      const id = await launchBackgroundAgent(
+        {
+          store,
+          runtime,
+          ptyManager: harness.manager,
+          provider: inBackground({ startBackgroundSession: start }),
+        },
+        { directoryPath: tempDir, bypassPermissions: true, palette: 2 },
+      );
+      vi.unstubAllEnvs();
+
+      expect(starts).toEqual([{ cwd: tempDir, bypassPermissions: true }]);
+      expect(id).not.toBeNull();
+      const agent = store.get(id!)!;
+      expect(agent).toMatchObject({ sessionId, isExternal: false, jsonlFile: transcript });
+      expect(agent.palette).toBe(2);
+      expect(harness.spawnArgs[0]).toMatchObject({
+        file: 'claude',
+        args: ['attach', backgroundId],
+      });
+      expect(broadcasts).toContainEqual({ type: 'terminalSessionOpened', agentId: id });
+      // Its hooks name the session: they reach this agent.
+      runtime.handleHookEvent('claude', {
+        hook_event_name: 'SessionStart',
+        session_id: sessionId,
+        source: 'startup',
+        transcript_path: transcript,
+        cwd: tempDir,
+      });
+      expect(agent.hookDelivered).toBe(true);
+    });
+
+    it('+ Agent launches in the terminal as before when the CLI cannot start one', async () => {
+      const harness = workingPtyManager();
+      const id = await launchBackgroundAgent(
+        {
+          store,
+          runtime,
+          ptyManager: harness.manager,
+          provider: provider({ startBackgroundSession: () => Promise.resolve(null) }),
+        },
+        { directoryPath: tempDir },
+      );
+
+      expect(id).not.toBeNull();
+      expect(harness.spawnArgs[0].args[0]).toBe('--session-id');
+    });
+
+    it('+ Agent stays synchronous where there is no background service', () => {
+      const harness = workingPtyManager();
+      const id = launchBackgroundAgent(
+        {
+          store,
+          runtime,
+          ptyManager: harness.manager,
+          provider: provider({ startBackgroundSession: () => null }),
+        },
+        { directoryPath: tempDir },
+      );
+
+      expect(typeof id).toBe('number');
+    });
+
+    it('a Headless agent adopted while the CLI started it takes the terminal: one character', async () => {
+      const harness = workingPtyManager();
+      const adopted = createAgentState({
+        id: 9,
+        sessionId,
+        isExternal: true,
+        projectDir,
+        jsonlFile: transcript,
+        palette: 4,
+      });
+      store.set(9, adopted);
+      store.nextAgentId.current = 10;
+
+      const id = await launchBackgroundAgent(
+        {
+          store,
+          runtime,
+          ptyManager: harness.manager,
+          provider: inBackground({
+            startBackgroundSession: () => Promise.resolve({ sessionId, backgroundId }),
+          }),
+        },
+        { directoryPath: tempDir },
+      );
+
+      expect(id).toBe(9);
+      expect(store.size).toBe(1);
+      expect(adopted.isExternal).toBe(false);
+      expect(harness.spawnArgs[0].args).toEqual(['attach', backgroundId]);
+    });
+
+    it('opening its conversation attaches, into its Headless agent, and closing the terminal only detaches', () => {
+      const harness = workingPtyManager();
+      fs.writeFileSync(transcript, '{"type":"user"}\n');
+      const adopted = createAgentState({
+        id: 4,
+        sessionId,
+        isExternal: true,
+        projectDir,
+        jsonlFile: transcript,
+        palette: 5,
+      });
+      store.set(4, adopted);
+      store.nextAgentId.current = 5;
+
+      const id = launchStandaloneAgent(
+        { store, runtime, ptyManager: harness.manager, provider: inBackground() },
+        {
+          directoryPath: tempDir,
+          resume: { sessionId, transcript, agentId: 4, attach: backgroundId },
+        },
+      );
+
+      expect(id).toBe(4);
+      expect(harness.spawnArgs[0].args).toEqual(['attach', backgroundId]);
+      // No --dangerously-skip-permissions on an attach: the session has its mode.
+      harness.spawned[0].exit(0);
+      expect(store.get(4)).toBe(adopted);
+      expect(adopted).toMatchObject({ isExternal: true, palette: 5 });
+      expect(runtime.dismissalTracker.isDismissed(transcript)).toBe(false);
+    });
+
+    it('a detached agent whose session turned out to have ended is closed once the CLI says so', async () => {
+      const harness = workingPtyManager();
+      let live = true;
+      let refreshed: () => void = () => {};
+      const refreshing = new Promise<void>((resolve) => (refreshed = resolve));
+      const id = launchStandaloneAgent(
+        {
+          store,
+          runtime,
+          ptyManager: harness.manager,
+          provider: inBackground({
+            liveSessions: () =>
+              live ? [{ sessionId, kind: 'background', backgroundId, pid: 25624 }] : [],
+            refreshLiveSessions: async () => {
+              live = false;
+              refreshed();
+              return true;
+            },
+          }),
+        },
+        { directoryPath: tempDir, background: { sessionId, backgroundId } },
+      )!;
+
+      harness.spawned[0].exit(0);
+      expect(store.get(id)?.isExternal).toBe(true);
+      await refreshing;
+      await Promise.resolve();
+      expect(store.has(id)).toBe(false);
+    });
+
+    it('after a restart, an agent whose session still runs in the background comes back Headless', async () => {
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-bg-restore-'));
+      vi.stubEnv('HOME', home);
+      try {
+        fs.writeFileSync(transcript, '{"type":"user"}\n');
+        const adapter = new FileStateAdapter({ namespace: 'standalone' });
+        store.setAdapter(adapter);
+        const saved = [
+          // Launched with + Agent: a terminal agent when the last server died.
+          { id: 3, sessionId, terminalName: '', jsonlFile: transcript, projectDir, palette: 1 },
+          // A terminal agent whose session ended with it.
+          {
+            id: 5,
+            sessionId: 'aaaaaaaa-0000-4000-8000-000000000000',
+            terminalName: '',
+            jsonlFile: path.join(projectDir, 'gone.jsonl'),
+            projectDir,
+          },
+        ];
+        let asked = 0;
+        const restored = await restoreBackgroundAgents(
+          {
+            store,
+            runtime,
+            provider: inBackground({
+              refreshLiveSessions: async () => {
+                asked++;
+                return false;
+              },
+            }),
+          },
+          saved,
+        );
+
+        expect(asked).toBe(1);
+        expect(restored).toEqual([3]);
+        expect(store.get(3)).toMatchObject({ isExternal: true, sessionId, palette: 1 });
+        expect(store.has(5)).toBe(false);
+        expect(adapter.loadAgents().map((p) => p.id)).toEqual([3]);
+      } finally {
+        vi.unstubAllEnvs();
+        fs.rmSync(home, { recursive: true, force: true });
+      }
+    });
+
+    it('an in-process server stopping keeps only the Headless agents whose session runs on', () => {
+      const keep = createAgentState({
+        id: 1,
+        sessionId,
+        isExternal: true,
+        projectDir,
+        jsonlFile: transcript,
+      });
+      const other = createAgentState({
+        id: 2,
+        sessionId: 'bbbbbbbb-0000-4000-8000-000000000000',
+        isExternal: true,
+        projectDir,
+        jsonlFile: path.join(projectDir, 'other.jsonl'),
+      });
+      store.set(1, keep);
+      store.set(2, other);
+
+      keepBackgroundAgentsOnShutdown({ store, runtime, provider: inBackground() });
+
+      expect([...store.keys()]).toEqual([1]);
     });
   });
 

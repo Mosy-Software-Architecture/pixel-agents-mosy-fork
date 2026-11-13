@@ -3,11 +3,19 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { normalizeProjectPath } from '../../../../../core/src/normalizeProjectPath.js';
-import type { AgentEvent, HookProvider } from '../../../../../core/src/provider.js';
+import type { AgentEvent, HookProvider, LiveCliSession } from '../../../../../core/src/provider.js';
 import {
   BASH_COMMAND_DISPLAY_MAX_LENGTH,
   TASK_DESCRIPTION_DISPLAY_MAX_LENGTH,
 } from '../../../constants.js';
+import {
+  type AgentsList,
+  askAgentsList,
+  type ClaudeCliRunner,
+  createAgentsList,
+  runClaudeCli,
+  startBackgroundSession,
+} from './backgroundSessions.js';
 import {
   areHooksInstalled as installerAreHooksInstalled,
   installHooks as installerInstallHooks,
@@ -17,6 +25,7 @@ import { claudeTeamProvider } from './claudeTeamProvider.js';
 import { claudeUsageBridge } from './claudeUsageBridge.js';
 import { CONSENT_DISCLOSURE, CONSENT_INSTALL_HEADLINE } from './consentCopy.js';
 import {
+  CLAUDE_COMMAND,
   CLAUDE_LARGE_CONTEXT_WINDOW,
   CLAUDE_SMALL_CONTEXT_MODEL_PATTERN,
   CLAUDE_SMALL_CONTEXT_WINDOW,
@@ -24,7 +33,7 @@ import {
   CLAUDE_TERMINAL_NAME_PREFIX,
 } from './constants.js';
 import { conversationTitle, sessionInfo, sessionInfoFromRecord } from './conversationTitle.js';
-import { liveSessions } from './liveSessions.js';
+import { liveSessions, mergeLiveSessions } from './liveSessions.js';
 import { startsNoTurn } from './localCommands.js';
 import { isInheritedClaudeSessionEnv } from './sessionEnv.js';
 
@@ -147,12 +156,45 @@ function sessionDirOf(workspacePath: string): string {
 function buildLaunchCommand(
   sessionId: string,
   cwd: string,
-  opts?: { bypassPermissions?: boolean; resume?: boolean },
+  opts?: { bypassPermissions?: boolean; resume?: boolean; attach?: string },
 ): { command: string; args: string[]; env?: Record<string, string> } {
+  // A background session is opened where it runs: `claude attach` is a client
+  // of the background service, so the session outlives this terminal (Ctrl+Z
+  // or closing it only detaches). Its permission mode was set when it started.
+  if (opts?.attach)
+    return { command: CLAUDE_COMMAND, args: ['attach', opts.attach], env: { PWD: cwd } };
   // A resumed session keeps its id and appends to its old transcript.
   const args = [opts?.resume ? '--resume' : '--session-id', sessionId];
   if (opts?.bypassPermissions) args.push('--dangerously-skip-permissions');
-  return { command: 'claude', args, env: { PWD: cwd } };
+  return { command: CLAUDE_COMMAND, args, env: { PWD: cwd } };
+}
+
+/**
+ * The second source of live sessions, `claude agents --json` (background
+ * sessions the registry may not have), off until the host that launches
+ * agents turns it on (the standalone server, `enableClaudeAgentsList`): asking
+ * the CLI is a process per ask, and nothing else reads background sessions.
+ */
+let agentsList: AgentsList | null = null;
+
+/** Start asking the CLI for its sessions (`claude agents --json`), through
+ *  `run` (the real CLI by default; tests hand in their own). */
+export function enableClaudeAgentsList(run: ClaudeCliRunner = runClaudeCli): void {
+  agentsList = createAgentsList(() => askAgentsList(run));
+  cliRunner = run;
+}
+
+/** Stop asking (tests). */
+export function disableClaudeAgentsList(): void {
+  agentsList = null;
+  cliRunner = runClaudeCli;
+}
+
+/** What starts background sessions (`claude --bg`): the same runner. */
+let cliRunner: ClaudeCliRunner = runClaudeCli;
+
+function claudeLiveSessions(): LiveCliSession[] {
+  return mergeLiveSessions(liveSessions(), agentsList?.current() ?? []);
 }
 
 /** Root that holds every Claude session across all workspaces. Used by the
@@ -385,7 +427,21 @@ export const claudeProvider: HookProvider = {
   sessionInfo,
   sessionInfoFromRecord,
   startsNoTurn,
-  liveSessions: () => liveSessions(),
+  liveSessions: claudeLiveSessions,
+  refreshLiveSessions: () => agentsList?.refresh() ?? Promise.resolve(false),
+  // Only where the CLI's list is read: without it the new session's full id
+  // may never be found.
+  startBackgroundSession: (cwd, opts) => {
+    const list = agentsList;
+    if (!list) return null;
+    return startBackgroundSession(cwd, opts, {
+      run: cliRunner,
+      lookup: async () => {
+        await list.refresh();
+        return claudeLiveSessions();
+      },
+    });
+  },
 
   team: claudeTeamProvider,
   usageBridge: claudeUsageBridge,

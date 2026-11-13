@@ -13,7 +13,12 @@ printf '%s wrapper node=%s cwd=%s args=%s\n' "$(date -Iseconds)" "${NODE_BIN}" "
 # for terminal-hosted (internal) sessions — external spawns set no
 # PIXEL_AGENTS_TEST_NARRATION_LOG (their stdout IS the external log, so a tail
 # there would loop). The tail dies with the terminal at test teardown.
-if [ -n "${PIXEL_AGENTS_TEST_NARRATION_LOG:-}" ]; then
+# Not for the background commands (`agents --json`, `--bg`, `attach`): the
+# server reads their output to the end, and the tail would hold it open.
+TAIL_NARRATION=1
+case "${1:-}" in agents | attach) TAIL_NARRATION=0 ;; esac
+for arg in "$@"; do [ "${arg}" = "--bg" ] && TAIL_NARRATION=0; done
+if [ "${TAIL_NARRATION}" = 1 ] && [ -n "${PIXEL_AGENTS_TEST_NARRATION_LOG:-}" ]; then
   "${NODE_BIN}" "${SCRIPT_DIR}/tail-follow.cjs" none \
     "${PIXEL_AGENTS_TEST_NARRATION_LOG}" "${PIXEL_AGENTS_EXTERNAL_NARRATION_LOG:-}" \
     2>/dev/null &

@@ -15,9 +15,9 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type { HookProvider } from '../../../core/src/provider.js';
+import type { BackgroundSessionStart, HookProvider } from '../../../core/src/provider.js';
 import type { PersistedAgent } from '../../../core/src/schemas.js';
-import { restoredAgentInit } from '../agentPersistence.js';
+import { isPersistedSpawnChild, restoredAgentInit } from '../agentPersistence.js';
 import type { AgentRuntime } from '../agentRuntime.js';
 import { createAgentState } from '../agentState.js';
 import type { AgentStateStore } from '../agentStateStore.js';
@@ -53,8 +53,20 @@ export interface LaunchStandaloneAgentOptions {
    *  id, same transcript (read from its end), and the seat its agent sat in
    *  when that one is free. With `agentId`, the Headless agent running the
    *  session takes the terminal instead of a new agent coming in: same id,
-   *  character, seat and card, its transcript already watched. */
-  resume?: { sessionId: string; transcript: string; seatId?: string; agentId?: number };
+   *  character, seat and card, its transcript already watched. With `attach`,
+   *  the session runs in the CLI's background service under that short id:
+   *  the terminal attaches to it instead of resuming it. */
+  resume?: {
+    sessionId: string;
+    transcript: string;
+    seatId?: string;
+    agentId?: number;
+    attach?: string;
+  };
+  /** A new session already started in the CLI's background service
+   *  (launchBackgroundAgent): the agent takes its id and the terminal
+   *  attaches to it, so the session outlives the terminal and this server. */
+  background?: BackgroundSessionStart;
   cols?: number;
   rows?: number;
 }
@@ -75,11 +87,14 @@ export function launchStandaloneAgent(
   }
 
   const cwd = options.directoryPath ?? process.cwd();
-  const sessionId = options.resume?.sessionId ?? crypto.randomUUID();
+  const sessionId =
+    options.resume?.sessionId ?? options.background?.sessionId ?? crypto.randomUUID();
+  const attach = options.resume?.attach ?? options.background?.backgroundId;
 
   const launch = provider.buildLaunchCommand?.(sessionId, cwd, {
     bypassPermissions: options.bypassPermissions,
     resume: options.resume !== undefined,
+    ...(attach ? { attach } : {}),
   });
   if (!launch) {
     console.error('[Pixel Agents] Terminal: provider.buildLaunchCommand is not implemented');
@@ -170,13 +185,57 @@ export function launchStandaloneAgent(
   store.persist();
 
   const pid = session.pid !== null ? ` (pid ${session.pid})` : '';
+  const how = attach ? `attached to background session ${attach}` : undefined;
   const what = headless
-    ? `took a terminal on session ${sessionId}`
-    : options.resume
-      ? `resumed session ${sessionId}`
-      : `spawned ${launch.command}`;
+    ? `took a terminal on session ${sessionId}${how ? ` (${how})` : ''}`
+    : (how ?? (options.resume ? `resumed session ${sessionId}` : `spawned ${launch.command}`));
   console.log(`[Pixel Agents] Terminal: Agent ${id} - ${what}${pid} in ${cwd}`);
   return id;
+}
+
+/**
+ * The + Agent launch: start the session in the CLI's background service
+ * (HookProvider.startBackgroundSession, Claude's `claude --bg`) and attach a
+ * terminal to it, so the agent keeps running when the terminal closes or this
+ * server stops. When the CLI cannot start one (an older CLI, a folder it does
+ * not trust yet, a bypass disclaimer never accepted: each needs a terminal to
+ * ask in), the session starts in the terminal as before. The new agent's id
+ * (a promise while the CLI starts the session; at once where the provider has
+ * no background service), or null when nothing launched.
+ */
+export function launchBackgroundAgent(
+  deps: LaunchStandaloneAgentDeps,
+  options: Omit<LaunchStandaloneAgentOptions, 'resume' | 'background'> = {},
+): number | null | Promise<number | null> {
+  const { provider, ptyManager } = deps;
+  if (!ptyManager.isAvailable()) return launchStandaloneAgent(deps, options);
+  const cwd = options.directoryPath ?? process.cwd();
+  const launch = provider.buildLaunchCommand?.('', cwd, {});
+  const starting = provider.startBackgroundSession?.(cwd, {
+    bypassPermissions: options.bypassPermissions,
+    env: terminalEnv({ ...inheritedEnv(provider), ...launch?.env }),
+  });
+  // No background service here: the launch stays as it always was.
+  if (!starting) return launchStandaloneAgent(deps, options);
+  return starting.then((background) => {
+    if (!background) return launchStandaloneAgent(deps, options);
+    // One character per session: a Headless agent adopted from its hooks
+    // while `claude --bg` ran takes the terminal instead of a second one.
+    const holder = [...deps.store.values()].find((a) => a.sessionId === background.sessionId);
+    if (holder?.isExternal) {
+      return launchStandaloneAgent(deps, {
+        ...options,
+        resume: {
+          sessionId: background.sessionId,
+          transcript: holder.jsonlFile,
+          agentId: holder.id,
+          attach: background.backgroundId,
+        },
+      });
+    }
+    if (holder) return holder.id;
+    return launchStandaloneAgent(deps, { ...options, background });
+  });
 }
 
 /**
@@ -228,6 +287,73 @@ export function reattachTerminalAgents(deps: LaunchStandaloneAgentDeps): number[
 
   if (restored.length > 0) store.persist();
   return restored;
+}
+
+/** The sessions running in the CLI's background service right now, by id
+ *  (HookProvider.liveSessions, from its last answer). */
+export function backgroundSessionIds(provider: HookProvider): Set<string> {
+  return new Set(
+    (provider.liveSessions?.() ?? [])
+      .filter((s) => s.kind === 'background')
+      .map((s) => s.sessionId),
+  );
+}
+
+/**
+ * Bring back, Headless, the agents whose session outlived the last server in
+ * the CLI's background service (launched with + Agent, or attached to): their
+ * terminals were only clients of it. `saved` is the saved list as it was
+ * before this server touched it (reattachTerminalAgents rewrites it). They
+ * come back with their id, look and seat, and pressing their conversation
+ * attaches again. When none did, nothing changes here and the saved external
+ * agents come back as before, on the first connect.
+ */
+export async function restoreBackgroundAgents(
+  deps: Pick<LaunchStandaloneAgentDeps, 'store' | 'runtime' | 'provider'>,
+  saved: readonly PersistedAgent[],
+): Promise<number[]> {
+  const { store, runtime, provider } = deps;
+  if (!provider.refreshLiveSessions) return [];
+  await provider.refreshLiveSessions();
+  const live = backgroundSessionIds(provider);
+  const outlived = saved.filter(
+    (p) => !store.has(p.id) && !!p.sessionId && live.has(p.sessionId) && !isPersistedSpawnChild(p),
+  );
+  if (outlived.length === 0) return [];
+  // The other saved external agents too: the list written after this restore
+  // is the one the first connect would have restored them from.
+  const records = saved
+    .filter((p) => p.isExternal || outlived.includes(p))
+    .map((p) => (p.isExternal ? p : { ...p, isExternal: true }));
+  runtime.restoreExternalAgents(records);
+  const restored = outlived.map((p) => p.id).filter((id) => store.has(id));
+  console.log(
+    `[Pixel Agents] Background: ${restored.length} agent(s) still running in the background, back as Headless`,
+  );
+  return restored;
+}
+
+/**
+ * What an in-process server stopping does with its agents: every terminal is
+ * gone, so the next server starts with none, except the Headless ones whose
+ * session runs on in the CLI's background service (their terminal only
+ * detached): those stay in the saved list for the next server to bring back
+ * (restoreBackgroundAgents). Run after the terminals exited.
+ */
+export function keepBackgroundAgentsOnShutdown(
+  deps: Pick<LaunchStandaloneAgentDeps, 'store' | 'runtime' | 'provider'>,
+): void {
+  const { store, runtime, provider } = deps;
+  const live = backgroundSessionIds(provider);
+  const keep = (id: number) => {
+    const agent = store.get(id);
+    return !!agent && agent.isExternal && live.has(agent.sessionId) && !agent.spawnToolUseId;
+  };
+  runtime.stop();
+  for (const id of [...store.keys()]) {
+    if (!keep(id)) runtime.removeAgent(id);
+  }
+  store.persist();
 }
 
 /**
@@ -292,6 +418,15 @@ export function admitTerminalAgent(
       agent.isExternal = true;
       store.persist();
       console.log(`[Pixel Agents] Terminal: Agent ${id} - still running elsewhere, kept headless`);
+      // That answer may be a few seconds old (the CLI's list is cached): ask
+      // again, and close the agent if the session ended with this terminal.
+      void deps.provider.refreshLiveSessions?.().then(() => {
+        if (store.get(id) !== agent || !agent.isExternal) return;
+        if (runsElsewhere(deps.provider, agent.sessionId)) return;
+        console.log(`[Pixel Agents] Terminal: Agent ${id} - its session ended after all, closing`);
+        runtime.unregisterAgent(agent.sessionId);
+        runtime.closeAgent(id);
+      });
       return;
     }
     runtime.unregisterAgent(agent.sessionId);
@@ -302,9 +437,10 @@ export function admitTerminalAgent(
   if (!runtime.pollingTimers.has(id)) startJsonlPoll(deps, id, agent);
 }
 
-/** Whether a process the office did not launch runs `sessionId` right now
- *  (the CLI's registry; this server's own terminals are excluded by the
- *  caller, whose process has exited). */
+/** Whether something the office did not launch runs `sessionId` right now:
+ *  another terminal (the CLI's registry) or the CLI's background service
+ *  (this server's own terminals are excluded by the caller, whose process
+ *  has exited). */
 function runsElsewhere(provider: HookProvider, sessionId: string): boolean {
   return sessionsLiveElsewhere(provider, new Set()).has(sessionId);
 }

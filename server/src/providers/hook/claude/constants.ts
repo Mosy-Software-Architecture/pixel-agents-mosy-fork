@@ -107,6 +107,36 @@ export const CLAUDE_DEFAULT_AGENT_COLOR = 'default';
  *  under its config directory (`$CLAUDE_CONFIG_DIR`, else ~/.claude). */
 export const CLAUDE_SESSIONS_DIR_NAME = 'sessions';
 export const CLAUDE_CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR';
+/** A registry entry's `kind` for a background session's worker (`claude --bg`);
+ *  its `jobId` is the short id `claude attach` takes. */
+export const CLAUDE_REGISTRY_BACKGROUND_KIND = 'bg';
+
+// ── Background sessions (`claude --bg`, Claude Code 2.1.x) ─────
+/** The CLI the office launches and asks. */
+export const CLAUDE_COMMAND = 'claude';
+/** Every live session, interactive and background, as JSON (`claude agents --json`):
+ *  the one source that also lists a background session whose worker has not
+ *  registered (a startup dialog) or is not running (attaching starts it). */
+export const CLAUDE_AGENTS_LIST_ARGS: readonly string[] = ['agents', '--json'];
+/** How old the last `claude agents --json` answer may be before a read asks again
+ *  (in the background: a read never waits for the CLI). */
+export const CLAUDE_AGENTS_LIST_MAX_AGE_MS = 3_000;
+/** After a failed ask (no such command in an older CLI, a timeout), how long
+ *  before asking again. */
+export const CLAUDE_AGENTS_LIST_RETRY_MS = 60_000;
+/** How long one `claude agents --json` may take. */
+export const CLAUDE_AGENTS_LIST_TIMEOUT_MS = 5_000;
+/** Biggest answer read from it. */
+export const CLAUDE_AGENTS_LIST_MAX_BYTES = 4 * 1024 * 1024;
+/** Start a session in the background service (`claude --bg`); it prints
+ *  `backgrounded · <short id>` and returns. */
+export const CLAUDE_BACKGROUND_FLAG = '--bg';
+/** How long `claude --bg` may take (it starts the service when none runs). */
+export const CLAUDE_BACKGROUND_START_TIMEOUT_MS = 20_000;
+/** Asks of the session list for a just-started background session's full id,
+ *  and the pause between them (it may not be listed at once). */
+export const CLAUDE_BACKGROUND_LOOKUP_ATTEMPTS = 10;
+export const CLAUDE_BACKGROUND_LOOKUP_INTERVAL_MS = 300;
 
 /** How far back a remote host's past sessions are listed (remoteListing.ts):
  *  transcripts written within this many days, besides the running ones. */

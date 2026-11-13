@@ -3,7 +3,11 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { claudeSessionsDir, liveSessions } from '../src/providers/hook/claude/liveSessions.js';
+import {
+  claudeSessionsDir,
+  liveSessions,
+  mergeLiveSessions,
+} from '../src/providers/hook/claude/liveSessions.js';
 
 /**
  * Claude Code's registry of running processes (~/.claude/sessions/<pid>.json):
@@ -66,5 +70,68 @@ describe('Claude live sessions', () => {
     expect(claudeSessionsDir()).toBe(path.join('/custom/claude', 'sessions'));
     vi.stubEnv('CLAUDE_CONFIG_DIR', '');
     expect(claudeSessionsDir()).toBe(path.join(os.homedir(), '.claude', 'sessions'));
+  });
+
+  it("reads a background session's worker (kind bg) with its short id", () => {
+    entry(`${process.pid}.json`, {
+      pid: process.pid,
+      sessionId: '7fdcf719-fd04-418f-b911-6a99f154c1e5',
+      name: '7fdcf719',
+      status: 'idle',
+      kind: 'bg',
+      jobId: '7fdcf719',
+    });
+    expect(liveSessions(dir)).toEqual([
+      {
+        sessionId: '7fdcf719-fd04-418f-b911-6a99f154c1e5',
+        pid: process.pid,
+        name: '7fdcf719',
+        status: 'idle',
+        kind: 'background',
+        backgroundId: '7fdcf719',
+      },
+    ]);
+  });
+});
+
+describe('merging the registry with claude agents --json', () => {
+  const bg = { kind: 'background' as const };
+
+  it('adds a background session the registry lacks, and the state of one it has', () => {
+    const registry = [
+      { sessionId: 'a', pid: 10, status: 'busy' },
+      { sessionId: 'b', pid: 11, status: 'idle', ...bg, backgroundId: 'b0000000' },
+    ];
+    const listed = [
+      { sessionId: 'a', pid: 10, status: 'busy' },
+      {
+        sessionId: 'b',
+        pid: 11,
+        status: 'idle',
+        ...bg,
+        backgroundId: 'b0000000',
+        state: 'blocked',
+      },
+      // In a startup dialog, or its worker not running: only the list has it.
+      { sessionId: 'c', ...bg, backgroundId: 'c0000000', state: 'working', name: 'c' },
+    ];
+    expect(mergeLiveSessions(registry, listed)).toEqual([
+      { sessionId: 'a', pid: 10, status: 'busy' },
+      {
+        sessionId: 'b',
+        pid: 11,
+        status: 'idle',
+        ...bg,
+        backgroundId: 'b0000000',
+        state: 'blocked',
+      },
+      { sessionId: 'c', ...bg, backgroundId: 'c0000000', state: 'working', name: 'c' },
+    ]);
+  });
+
+  it('keeps an interactive process the registry missed, once', () => {
+    expect(mergeLiveSessions([], [{ sessionId: 'x', pid: 5 }])).toEqual([
+      { sessionId: 'x', pid: 5 },
+    ]);
   });
 });

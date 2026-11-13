@@ -493,8 +493,167 @@ async function playScenario(homeDir, scenario, context) {
   echo(null, 'session ended');
 }
 
+// ── Background sessions (`claude --bg`, `claude agents --json`, `claude attach`) ──
+//
+// Off unless a test turns them on (`enableMockBackgroundSessions`, a marker file
+// under ~/.claude-mock): then `--bg` answers like an older CLI does, unknown
+// option, and the office launches in its terminal as before. On, `--bg` starts a
+// detached worker that plays the next scenario as the session (transcript,
+// hooks) and prints `backgrounded · <short id>`; `agents --json` lists the
+// workers still alive; `attach <id>` follows the worker's output until it ends
+// (and, like the real one, leaves it running when the terminal closes).
+
+const BACKGROUND_WORKER_FLAG = '--mock-bg-worker';
+const BACKGROUND_POLL_MS = 200;
+
+function backgroundEnabled(homeDir) {
+  return fs.existsSync(path.join(getMockRoot(homeDir), 'background-enabled'));
+}
+
+function backgroundRegistryPath(homeDir) {
+  return path.join(getMockRoot(homeDir), 'background.json');
+}
+
+function readBackgroundRegistry(homeDir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(backgroundRegistryPath(homeDir), 'utf8'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeBackgroundRegistry(homeDir, entries) {
+  fs.mkdirSync(getMockRoot(homeDir), { recursive: true });
+  const target = backgroundRegistryPath(homeDir);
+  const tmp = `${target}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(entries, null, 2));
+  fs.renameSync(tmp, target);
+}
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err && err.code === 'EPERM';
+  }
+}
+
+function backgroundOutputPath(homeDir, shortId) {
+  return path.join(getMockRoot(homeDir), `bg-${shortId}.out`);
+}
+
+function listBackground(homeDir) {
+  const live = readBackgroundRegistry(homeDir).filter((entry) => isAlive(entry.pid));
+  const list = live.map((entry) => ({
+    pid: entry.pid,
+    id: entry.id,
+    cwd: entry.cwd,
+    kind: 'background',
+    startedAt: entry.startedAt,
+    sessionId: entry.sessionId,
+    name: entry.id,
+    status: 'idle',
+    state: 'working',
+  }));
+  process.stdout.write(`${JSON.stringify(list, null, 2)}\n`);
+}
+
+function startBackground(homeDir, cwd, args) {
+  if (!backgroundEnabled(homeDir)) {
+    process.stderr.write("error: unknown option '--bg'\n");
+    process.exitCode = 1;
+    return;
+  }
+  const sessionId = require('crypto').randomUUID();
+  const shortId = sessionId.slice(0, 8);
+  const out = fs.openSync(backgroundOutputPath(homeDir, shortId), 'a');
+  const worker = spawn(
+    process.execPath,
+    [__filename, BACKGROUND_WORKER_FLAG, sessionId, ...args.filter((a) => a !== '--bg')],
+    { cwd, env: process.env, detached: true, stdio: ['ignore', out, out] },
+  );
+  worker.unref();
+  fs.closeSync(out);
+  const entries = readBackgroundRegistry(homeDir);
+  entries.push({ id: shortId, sessionId, cwd, pid: worker.pid, startedAt: Date.now() });
+  writeBackgroundRegistry(homeDir, entries);
+  logAction(homeDir, `background start ${shortId} session=${sessionId} pid=${worker.pid}`);
+  process.stdout.write(
+    `backgrounded · ${shortId} (idle — send a prompt to start)\n  claude attach ${shortId}    open in this terminal\n`,
+  );
+}
+
+async function attachBackground(homeDir, shortId) {
+  const entry = readBackgroundRegistry(homeDir).find((e) => e.id === shortId);
+  logAction(homeDir, `background attach ${shortId} found=${Boolean(entry)}`);
+  if (!entry) {
+    process.stderr.write(`No background session ${shortId}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  process.stdout.write(`mock claude attached to background session ${shortId}\n`);
+  // Follow the worker's output, as the real attach shows the session's screen.
+  const outPath = backgroundOutputPath(homeDir, shortId);
+  let offset = 0;
+  const pump = () => {
+    try {
+      const data = fs.readFileSync(outPath);
+      if (data.length > offset) {
+        process.stdout.write(data.subarray(offset));
+        offset = data.length;
+      }
+    } catch {
+      // Not written yet.
+    }
+  };
+  while (isAlive(entry.pid)) {
+    pump();
+    await sleep(BACKGROUND_POLL_MS);
+  }
+  pump();
+  process.stdout.write(`background session ${shortId} ended\n`);
+}
+
+function forgetBackground(homeDir, sessionId) {
+  writeBackgroundRegistry(
+    homeDir,
+    readBackgroundRegistry(homeDir).filter((entry) => entry.sessionId !== sessionId),
+  );
+}
+
+/** Handle the background commands; true when the invocation was one. */
+async function handleBackgroundCommand(homeDir, cwd, args) {
+  if (args[0] === 'agents') {
+    listBackground(homeDir);
+    return true;
+  }
+  if (args[0] === 'attach') {
+    await attachBackground(homeDir, args[1] || '');
+    return true;
+  }
+  if (args.includes('--bg')) {
+    startBackground(homeDir, cwd, args);
+    return true;
+  }
+  return false;
+}
+
 async function main() {
-  const sessionId = parseSessionId(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  // A background worker plays the session under the id `--bg` gave it.
+  const workerSessionId = argv[0] === BACKGROUND_WORKER_FLAG ? argv[1] : undefined;
+  if (
+    workerSessionId === undefined &&
+    (await handleBackgroundCommand(os.homedir(), process.cwd(), argv))
+  ) {
+    return;
+  }
+  if (workerSessionId !== undefined) {
+    process.on('exit', () => forgetBackground(os.homedir(), workerSessionId));
+  }
+  const sessionId = workerSessionId ?? parseSessionId(argv);
   const cwd = process.cwd();
   const homeDir = os.homedir();
   const scenario = claimScenario(homeDir) || {
@@ -505,7 +664,7 @@ async function main() {
     actions: [],
   };
 
-  logInvocation(homeDir, sessionId, cwd, process.argv.slice(2));
+  logInvocation(homeDir, sessionId, cwd, argv);
   if (IS_EXTERNAL) {
     externalTag = tinySessionTag(sessionId);
     process.stdout.write(

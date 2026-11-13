@@ -263,4 +263,63 @@ describe('mock-claude-runner hook execution', () => {
     );
     expect(fs.existsSync(transcriptPath)).toBe(false);
   });
+
+  /** Run the mock with `args`, wait for it, and keep its stdout. */
+  function runMock(args: string[]): Promise<{ code: number | null; stdout: string }> {
+    return new Promise((resolve) => {
+      const child = spawn(process.execPath, [MOCK_CLAUDE_RUNNER, ...args], {
+        cwd: workspaceDir,
+        env: { ...process.env, HOME: tmpHome },
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      let stdout = '';
+      child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
+      child.on('close', (code) => resolve({ code, stdout }));
+    });
+  }
+
+  it('answers --bg like an older CLI until background sessions are turned on, and lists none', async () => {
+    writeScenarioQueue(tmpHome, [{ schemaVersion: 1, actions: [], holdOpenMs: 0 }]);
+    expect((await runMock(['--bg'])).code).toBe(1);
+    expect(JSON.parse((await runMock(['agents', '--json'])).stdout)).toEqual([]);
+    // Neither took the scenario meant for the launch that follows.
+    const queue = JSON.parse(
+      fs.readFileSync(path.join(tmpHome, '.claude-mock', 'scenario-queue.json'), 'utf8'),
+    );
+    expect(queue).toHaveLength(1);
+  });
+
+  it('starts a background worker that plays the scenario, lists it, and attach follows it to its end', async () => {
+    fs.mkdirSync(path.join(tmpHome, '.claude-mock'), { recursive: true });
+    fs.writeFileSync(path.join(tmpHome, '.claude-mock', 'background-enabled'), '');
+    writeScenarioQueue(tmpHome, [{ schemaVersion: 1, actions: [], holdOpenMs: 1_500 }]);
+
+    const started = await runMock(['--bg']);
+    expect(started.code).toBe(0);
+    const shortId = /backgrounded · ([0-9a-f]{8})/.exec(started.stdout)?.[1];
+    expect(shortId).toBeDefined();
+
+    const listed = JSON.parse((await runMock(['agents', '--json'])).stdout) as Array<{
+      id: string;
+      sessionId: string;
+      kind: string;
+    }>;
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ id: shortId, kind: 'background' });
+    expect(listed[0].sessionId.startsWith(shortId!)).toBe(true);
+
+    const attached = await runMock(['attach', shortId!]);
+    expect(attached.code).toBe(0);
+    expect(attached.stdout).toContain(`mock claude session ${listed[0].sessionId.slice(0, 8)}`);
+    expect(attached.stdout).toContain(`background session ${shortId} ended`);
+    // The session wrote its own transcript, under its own id.
+    const projectDir = path.join(
+      tmpHome,
+      '.claude',
+      'projects',
+      workspaceDir.replace(/[^a-zA-Z0-9-]/g, '-'),
+    );
+    expect(fs.existsSync(path.join(projectDir, `${listed[0].sessionId}.jsonl`))).toBe(true);
+    expect(JSON.parse((await runMock(['agents', '--json'])).stdout)).toEqual([]);
+  }, 15_000);
 });

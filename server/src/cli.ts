@@ -34,6 +34,7 @@ import {
   WILDCARD_HOSTNAMES,
 } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { enableClaudeAgentsList } from './providers/hook/claude/claude.js';
 import {
   claudeProvider,
   copyHookScript,
@@ -48,7 +49,11 @@ import {
 } from './terminal/ptyHostProtocol.js';
 import { PtySessionManager } from './terminal/ptySessionManager.js';
 import { RemotePtySessions, startPtyHostProcess } from './terminal/remotePtySessions.js';
-import { reattachTerminalAgents } from './terminal/standaloneAgentLauncher.js';
+import {
+  keepBackgroundAgentsOnShutdown,
+  reattachTerminalAgents,
+  restoreBackgroundAgents,
+} from './terminal/standaloneAgentLauncher.js';
 import type { TerminalSessions } from './terminal/terminalSessions.js';
 import { startUsagePolling } from './usageLimits.js';
 import { isLoopbackHost, normalizeHostname } from './wsAuth.js';
@@ -320,8 +325,15 @@ async function main(): Promise<void> {
   });
 
   try {
+    // The office launches into, and attaches to, Claude Code's background
+    // sessions: read them (`claude agents --json`) besides the registry.
+    enableClaudeAgentsList();
+
     // Create runtime first (before server.start, so we can pass it in)
     const runtime = new AgentRuntime(store, claudeProvider);
+
+    // The saved list before anything rewrites it (restoreBackgroundAgents).
+    const savedAgents = store.loadPersistedAgents();
 
     // Agents whose terminals outlived the last server (--pty-host): back in
     // the office before any browser connects.
@@ -334,6 +346,9 @@ async function main(): Promise<void> {
     if (reattached.length > 0) {
       console.log(`[Pixel Agents] Reattached ${reattached.length} running agent(s)`);
     }
+    // Agents whose session outlived the last server in Claude Code's
+    // background service (+ Agent starts sessions there): back, Headless.
+    await restoreBackgroundAgents({ store, runtime, provider: claudeProvider }, savedAgents);
 
     // Wire hook events: HTTP POST -> runtime -> hookEventHandler -> agents
     server.onHookEvent((providerId, event) => {
@@ -526,10 +541,12 @@ async function main(): Promise<void> {
       characterProfilesWatcher.dispose();
       stopUsagePolling();
       // With the PTY host, stop, not dispose: the saved list keeps whoever is
-      // still running, for the next server to reattach. In process, dispose:
-      // every terminal is gone, and the next server starts with no agents.
+      // still running, for the next server to reattach. In process every
+      // terminal is gone, and the next server starts with no agents but the
+      // Headless ones whose session runs on in Claude Code's background
+      // service (their terminal only detached).
       if (args.ptyHost) runtime.stop();
-      else runtime.dispose();
+      else keepBackgroundAgentsOnShutdown({ store, runtime, provider: claudeProvider });
       server.stop();
       process.exit(0);
     }
