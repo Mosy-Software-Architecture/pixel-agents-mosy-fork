@@ -19,6 +19,9 @@ interface AgentCardBarProps {
   activityFor: (agentId: number) => string;
   onSelect: (agentId: number) => void;
   onClose: (agentId: number) => void;
+  /** Stop an agent's background session (the card's skull); absent where
+   *  this office may not (read-only, VS Code). */
+  onStopSession?: (agentId: number) => void;
   /** Persist a dragged order; absent in a read-only office. */
   onReorder?: (order: number[]) => void;
   /** Drawn right below the cards (the terminal's hide ribbon). */
@@ -48,6 +51,7 @@ export function AgentCardBar({
   activityFor,
   onSelect,
   onClose,
+  onStopSession,
   onReorder,
   trailing,
 }: AgentCardBarProps) {
@@ -66,6 +70,7 @@ export function AgentCardBar({
       showLabels
       onSelect={onSelect}
       onClose={onClose}
+      onStopSession={onStopSession}
       trailing={trailing}
     />
   );

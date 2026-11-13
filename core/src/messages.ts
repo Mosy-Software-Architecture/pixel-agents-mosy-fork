@@ -54,6 +54,8 @@ export type ServerMessage =
   | TerminalAvailability
   | TerminalSessionOpened
   | TerminalSessionClosed
+  | AgentBackgroundSessions
+  | AgentSessionStopFailed
   | AgentDiagnostics;
 
 export type ClientMessage =
@@ -62,6 +64,7 @@ export type ClientMessage =
   | SetAgentCharacter
   | FocusAgent
   | CloseAgent
+  | StopAgentSession
   | SaveAgentSeats
   | SaveLayout
   | SaveCharacterProfiles
@@ -579,6 +582,17 @@ export interface TerminalSessionClosed {
   exitCode?: number;
 }
 
+export interface AgentBackgroundSessions {
+  type: 'agentBackgroundSessions';
+  agents: Record<string, string>;
+}
+
+export interface AgentSessionStopFailed {
+  type: 'agentSessionStopFailed';
+  id: number;
+  reason: string;
+}
+
 export interface AgentDiagnostics {
   type: 'agentDiagnostics';
   agents: Record<string, any>[];
@@ -607,6 +621,11 @@ export interface FocusAgent {
 
 export interface CloseAgent {
   type: 'closeAgent';
+  id: number;
+}
+
+export interface StopAgentSession {
+  type: 'stopAgentSession';
   id: number;
 }
 

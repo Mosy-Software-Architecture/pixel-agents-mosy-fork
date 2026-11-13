@@ -135,6 +135,9 @@ components:
         - $ref: '#/components/schemas/TerminalAvailability'
         - $ref: '#/components/schemas/TerminalSessionOpened'
         - $ref: '#/components/schemas/TerminalSessionClosed'
+        # Background sessions (stop one from its card)
+        - $ref: '#/components/schemas/AgentBackgroundSessions'
+        - $ref: '#/components/schemas/AgentSessionStopFailed'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
       discriminator: type
@@ -146,6 +149,7 @@ components:
         - $ref: '#/components/schemas/SetAgentCharacter'
         - $ref: '#/components/schemas/FocusAgent'
         - $ref: '#/components/schemas/CloseAgent'
+        - $ref: '#/components/schemas/StopAgentSession'
         - $ref: '#/components/schemas/SaveAgentSeats'
         - $ref: '#/components/schemas/SaveLayout'
         - $ref: '#/components/schemas/SaveCharacterProfiles'
@@ -1404,6 +1408,49 @@ components:
         exitCode:
           type: integer
 
+    AgentBackgroundSessions:
+      description: >-
+        The agents whose session runs in the CLI's background service right
+        now (Claude Code's `claude --bg`): the ones the office launched or
+        attached to, and Headless agents adopted from such a session. Their
+        card can stop the session (stopAgentSession); an agent whose session
+        runs in another terminal is never listed. The whole state each time:
+        sent on connect by a host that can stop sessions (the standalone
+        server) and broadcast when it changes. Never sent by a host that
+        cannot, so no card there offers it.
+      type: object
+      additionalProperties: false
+      required: [type, agents]
+      properties:
+        type:
+          const: agentBackgroundSessions
+        agents:
+          type: object
+          description: >-
+            Map of agent ID (string) to its session's short id in the
+            background service (the one `claude stop <id>` and `claude attach
+            <id>` take).
+          additionalProperties:
+            type: string
+
+    AgentSessionStopFailed:
+      description: >-
+        A stopAgentSession its sender asked for did not happen: the CLI
+        refused or failed (`claude stop` exited non-zero or timed out), or
+        the session no longer runs in the background. The agent stays as it
+        was. Sent to the sender only.
+      type: object
+      additionalProperties: false
+      required: [type, id, reason]
+      properties:
+        type:
+          const: agentSessionStopFailed
+        id:
+          type: integer
+        reason:
+          type: string
+          description: Why, in the CLI's words when it gave any (its first line).
+
     # ── Client message variants ────────────────────────────────────
 
     WebviewReady:
@@ -1477,6 +1524,26 @@ components:
       properties:
         type:
           const: closeAgent
+        id:
+          type: integer
+
+    StopAgentSession:
+      description: >-
+        Stop the agent's session, which runs in the CLI's background service
+        (its card's skull; Claude Code's `claude stop <short id>`). The
+        server asks the CLI anew whether the session runs there, and stops
+        only such a session, never a process in another terminal. On success
+        the office's terminal on it (if any) closes and the agent leaves the
+        office as a final close would (agentClosed); its conversation stays
+        in the list as a past one. On failure the agent stays and the sender
+        gets agentSessionStopFailed. Standalone only; refused from a
+        read-only client like every other change.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: stopAgentSession
         id:
           type: integer
 

@@ -13,6 +13,8 @@ import {
   CLAUDE_BACKGROUND_LOOKUP_INTERVAL_MS,
   CLAUDE_BACKGROUND_START_TIMEOUT_MS,
   CLAUDE_COMMAND,
+  CLAUDE_STOP_COMMAND,
+  CLAUDE_STOP_TIMEOUT_MS,
 } from './constants.js';
 import { isInheritedClaudeSessionEnv } from './sessionEnv.js';
 
@@ -209,6 +211,35 @@ export async function startBackgroundSession(
       `it keeps running (claude attach ${backgroundId})`,
   );
   return null;
+}
+
+/** A background session's short id as the CLI's commands take it: never
+ *  anything the CLI could read as a flag. */
+const BACKGROUND_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+/**
+ * Stop the background session `backgroundId` (`claude stop <id>`): its worker
+ * ends and its conversation stays. Rejects with the CLI's reason (the first
+ * line of what it printed, else the error) when it refuses, fails, times out
+ * or is not there, and at once for an id that is not one.
+ */
+export async function stopBackgroundSession(
+  backgroundId: string,
+  run: ClaudeCliRunner,
+): Promise<void> {
+  if (!BACKGROUND_ID_PATTERN.test(backgroundId)) {
+    throw new Error(`Not a background session id: ${JSON.stringify(backgroundId)}`);
+  }
+  try {
+    await run([CLAUDE_STOP_COMMAND, backgroundId], {
+      env: claudeCliEnv(),
+      timeoutMs: CLAUDE_STOP_TIMEOUT_MS,
+    });
+  } catch (err) {
+    const why = String((err as { stderr?: string }).stderr ?? '').trim();
+    const reason = firstLine(why) || (err instanceof Error ? err.message : String(err));
+    throw new Error(reason);
+  }
 }
 
 function firstLine(text: string): string {

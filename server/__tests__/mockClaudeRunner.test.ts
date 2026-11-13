@@ -322,4 +322,18 @@ describe('mock-claude-runner hook execution', () => {
     expect(fs.existsSync(path.join(projectDir, `${listed[0].sessionId}.jsonl`))).toBe(true);
     expect(JSON.parse((await runMock(['agents', '--json'])).stdout)).toEqual([]);
   }, 15_000);
+
+  it('stop ends a background worker and drops it from the list; an unknown id fails', async () => {
+    fs.mkdirSync(path.join(tmpHome, '.claude-mock'), { recursive: true });
+    fs.writeFileSync(path.join(tmpHome, '.claude-mock', 'background-enabled'), '');
+    writeScenarioQueue(tmpHome, [{ schemaVersion: 1, actions: [], holdOpenMs: 30_000 }]);
+
+    const started = await runMock(['--bg']);
+    const shortId = /backgrounded · ([0-9a-f]{8})/.exec(started.stdout)?.[1];
+    expect(JSON.parse((await runMock(['agents', '--json'])).stdout)).toHaveLength(1);
+
+    expect((await runMock(['stop', shortId!])).code).toBe(0);
+    expect(JSON.parse((await runMock(['agents', '--json'])).stdout)).toEqual([]);
+    expect((await runMock(['stop', shortId!])).code).toBe(1);
+  }, 15_000);
 });

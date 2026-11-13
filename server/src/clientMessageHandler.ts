@@ -7,6 +7,7 @@ import { buildAgentDiagnostics } from './agentDiagnostics.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
+import { agentBackgroundSessionsMessage, stopBackgroundAgent } from './backgroundSessionAgents.js';
 import { cardOrderMessage, saveCardOrder } from './cardOrder.js';
 import {
   characterProfilesLoadedMessage,
@@ -131,6 +132,10 @@ const conversationProvider = hookProviders.find(
 /** Sessions a `resumeConversation` is opening right now (it waits for the
  *  CLI's list before it launches). */
 const resumesInFlight = new Set<string>();
+
+/** Agents whose session a `stopAgentSession` is stopping right now (it waits
+ *  for the CLI twice): a second press meanwhile stops nothing more. */
+const stopsInFlight = new Set<number>();
 
 /** The sessions open in a terminal the office did not launch: the CLI's
  *  running processes, less this office's own terminals. */
@@ -378,6 +383,23 @@ export function handleClientMessage(
         ctx.ptyManager?.dispose(id);
         runtime.closeAgent(id);
       }
+      break;
+    }
+
+    case 'stopAgentSession': {
+      // The card's skull: stop the agent's background session (`claude stop`)
+      // and close the agent. Only a session the CLI lists in its background
+      // service, asked anew: another terminal's process is never stopped.
+      const { ptyManager } = ctx;
+      if (!runtime || !ptyManager || !conversationProvider?.stopBackgroundSession) break;
+      const id = msg.id;
+      if (typeof id !== 'number' || !store.has(id) || stopsInFlight.has(id)) break;
+      stopsInFlight.add(id);
+      void stopBackgroundAgent({ store, runtime, ptyManager, provider: conversationProvider }, id)
+        .then((reason) => {
+          if (reason !== null) send({ type: 'agentSessionStopFailed', id, reason });
+        })
+        .finally(() => stopsInFlight.delete(id));
       break;
     }
 
@@ -888,6 +910,13 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
         send({ type: 'terminalSessionOpened', agentId: id });
       }
     }
+  }
+
+  // 10. Which agents' sessions run in the background (their card can stop
+  // one), where this server can stop them: broadcast on change from here on
+  // (watchBackgroundSessionAgents).
+  if (ctx.ptyManager && conversationProvider?.stopBackgroundSession) {
+    send({ ...agentBackgroundSessionsMessage(store, conversationProvider) });
   }
 }
 

@@ -445,6 +445,17 @@ export const ICONS = {
     '........',
     '...##...',
   ],
+  // A skull: stop the agent's background session (the agent card).
+  skull: [
+    '.######.',
+    '########',
+    '#..##..#',
+    '#..##..#',
+    '########',
+    '.##..##.',
+    '..####..',
+    '..#..#..',
+  ],
 } as const satisfies Record<string, readonly string[]>;
 
 export type PixelIconName = keyof typeof ICONS;

@@ -31,6 +31,58 @@ export function closeMode(variant: CardVariant, onlyWhenActive: boolean): CloseM
   return variant === 'active' ? 'shown' : 'hidden';
 }
 
+/** Where a card's stop button (the skull) stands: armed by a first press,
+ *  stopping once the second one sent the stop, or failed (the server said
+ *  why). Absent = at rest. */
+export type StopPhase = 'armed' | 'stopping' | 'failed';
+
+/**
+ * How a card shows its skull, or null for none: only on an agent whose
+ * session runs in the CLI's background service (`backgroundId`, from the
+ * server's agentBackgroundSessions) and only where this office may stop it
+ * (`canStop`: a tokened standalone office). An interactive session in
+ * another terminal never gets one: the office must not end another
+ * terminal's process. At rest it follows the × (`close`); armed, stopping or
+ * failed it stays shown, so the state does not vanish with the pointer.
+ */
+export function stopMode(
+  close: CloseMode,
+  {
+    backgroundId,
+    canStop,
+    phase,
+  }: { backgroundId: string | undefined; canStop: boolean; phase: StopPhase | undefined },
+): CloseMode | null {
+  if (!canStop || !backgroundId) return null;
+  return phase ? 'shown' : close;
+}
+
+/** A press on the skull: the first arms it, the second (while armed) sends
+ *  the stop, and one while stopping does nothing. A failed one arms again. */
+export function stopPress(phase: StopPhase | undefined): { phase: StopPhase; send: boolean } {
+  if (phase === 'armed') return { phase: 'stopping', send: true };
+  if (phase === 'stopping') return { phase: 'stopping', send: false };
+  return { phase: 'armed', send: false };
+}
+
+/** The skull's tooltip (and accessible name) for its phase. */
+export function stopTitle(
+  phase: StopPhase | undefined,
+  backgroundId: string,
+  reason?: string,
+): string {
+  switch (phase) {
+    case 'armed':
+      return `Press again to stop this session (claude stop ${backgroundId})`;
+    case 'stopping':
+      return 'Stopping the session…';
+    case 'failed':
+      return `Could not stop the session: ${reason ?? 'unknown error'}`;
+    default:
+      return 'Stop session (it runs in the background)';
+  }
+}
+
 /** The cards, in order: main agents only (a Teammate is shown by its
  *  character beside its Lead, never as a card of its own), in the saved
  *  order with new ones appended (mergeOrder). */

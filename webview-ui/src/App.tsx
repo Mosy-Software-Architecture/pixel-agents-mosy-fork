@@ -412,6 +412,12 @@ function App() {
     transport.send({ type: 'closeAgent', id });
   }, []);
 
+  // The card's skull, once armed and pressed again: stop the agent's
+  // background session (the server closes the agent when it stopped).
+  const handleStopSession = useCallback((id: number) => {
+    transport.send({ type: 'stopAgentSession', id });
+  }, []);
+
   const { reveal: revealTerminal } = terminalDrawer;
   const handleClick = useCallback(
     (agentId: number) => {
@@ -849,6 +855,7 @@ function App() {
           onAddDirectory={directoryEditor.add}
           onEditDirectory={directoryEditor.edit}
           onCloseAgent={handleCloseAgent}
+          onStopSession={officeReadOnly ? undefined : handleStopSession}
           onReorder={officeReadOnly ? undefined : saveCardOrder}
           onOpenCharacters={officeReadOnly ? undefined : openCharacters}
           keyboardOpen={keyboard.keyboardOpen}
@@ -887,6 +894,7 @@ function App() {
               activityFor={terminalDrawer.activityFor}
               onSelect={handleCardSelect}
               onClose={handleCloseAgent}
+              onStopSession={officeReadOnly ? undefined : handleStopSession}
               onReorder={officeReadOnly ? undefined : saveCardOrder}
               trailing={
                 terminalAvailable && terminalAgentIds.length > 0 ? (

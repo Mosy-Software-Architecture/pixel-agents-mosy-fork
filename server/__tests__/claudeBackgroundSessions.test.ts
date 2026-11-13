@@ -7,6 +7,7 @@ import {
   createAgentsList,
   parseAgentsList,
   startBackgroundSession,
+  stopBackgroundSession,
 } from '../src/providers/hook/claude/backgroundSessions.js';
 import {
   claudeProvider,
@@ -201,6 +202,57 @@ describe('starting a background session (+ Agent)', () => {
   });
 });
 
+describe('stopping a background session (the card skull)', () => {
+  it('runs claude stop <short id>, with a timeout and without the session markers', async () => {
+    const calls: Array<{
+      args: readonly string[];
+      timeoutMs: number;
+      env: Record<string, string>;
+    }> = [];
+    const previous = process.env.CLAUDE_CODE_SESSION_ID;
+    process.env.CLAUDE_CODE_SESSION_ID = 'the-server-runs-inside-a-session';
+    try {
+      await stopBackgroundSession('7fdcf719', async (args, opts) => {
+        calls.push({ args, timeoutMs: opts.timeoutMs, env: opts.env });
+        return '';
+      });
+    } finally {
+      if (previous === undefined) delete process.env.CLAUDE_CODE_SESSION_ID;
+      else process.env.CLAUDE_CODE_SESSION_ID = previous;
+    }
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toEqual(['stop', '7fdcf719']);
+    expect(calls[0].timeoutMs).toBeGreaterThan(0);
+    expect(calls[0].env.CLAUDE_CODE_SESSION_ID).toBeUndefined();
+  });
+
+  it("rejects with the CLI's own words when it refuses", async () => {
+    // What Claude Code 2.1.316 prints (stderr, exit 1) for an id it does not know.
+    const refusing: ClaudeCliRunner = () =>
+      Promise.reject(
+        Object.assign(new Error('Command failed: claude stop deadbeef'), {
+          stderr: "No job matching 'deadbeef'. Run 'claude agents' to list running sessions.\n",
+        }),
+      );
+    await expect(stopBackgroundSession('deadbeef', refusing)).rejects.toThrow(
+      "No job matching 'deadbeef'",
+    );
+    // No stderr (a timeout, no CLI at all): the error itself.
+    await expect(
+      stopBackgroundSession('deadbeef', () => Promise.reject(new Error('spawn claude ENOENT'))),
+    ).rejects.toThrow('spawn claude ENOENT');
+  });
+
+  it('never runs the CLI on an id it could read as a flag', async () => {
+    const run = vi.fn<ClaudeCliRunner>(async () => '');
+    await expect(stopBackgroundSession('--all', run)).rejects.toThrow(
+      'Not a background session id',
+    );
+    await expect(stopBackgroundSession('', run)).rejects.toThrow('Not a background session id');
+    expect(run).not.toHaveBeenCalled();
+  });
+});
+
 describe('the Claude provider', () => {
   afterEach(() => disableClaudeAgentsList());
 
@@ -226,5 +278,15 @@ describe('the Claude provider', () => {
         .filter((s) => s.kind === 'background')
         .map((s) => s.backgroundId),
     ).toEqual(['095e9c03', '7fdcf719']);
+  });
+
+  it('stops a background session through the same runner', async () => {
+    const asked: Array<readonly string[]> = [];
+    enableClaudeAgentsList(async (args) => {
+      asked.push(args);
+      return '[]';
+    });
+    await claudeProvider.stopBackgroundSession!('095e9c03');
+    expect(asked).toEqual([['stop', '095e9c03']]);
   });
 });

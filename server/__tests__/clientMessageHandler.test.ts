@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_CHARACTER_PROFILES } from '../../core/src/defaultCharacterProfiles.js';
 import { AgentRuntime } from '../src/agentRuntime.js';
@@ -1477,6 +1477,129 @@ describe('clientMessageHandler: standalone terminal control plane', () => {
         backgroundId: '7fdcf719',
       });
     });
+
+    // ── stopAgentSession (the card's skull) ────────────────────
+
+    /** The CLI as the stop sees it: `agents --json` lists the session until
+     *  `claude stop` ends it; `refuse` makes the stop fail with that stderr;
+     *  `kind` lists it as something other than a background session. */
+    function cli(opts: { refuse?: string; kind?: string } = {}) {
+      const asked: Array<readonly string[]> = [];
+      let stopped = false;
+      enableClaudeAgentsList(async (args) => {
+        asked.push(args);
+        if (args[0] === 'stop') {
+          if (opts.refuse) {
+            throw Object.assign(new Error('Command failed'), { stderr: `${opts.refuse}\n` });
+          }
+          stopped = true;
+          return '';
+        }
+        return JSON.stringify(
+          stopped
+            ? []
+            : [{ pid: 25624, id: '7fdcf719', kind: opts.kind ?? 'background', sessionId }],
+        );
+      });
+      return { stops: () => asked.filter((args) => args[0] === 'stop') };
+    }
+
+    /** An agent with the office's terminal attached to the session. */
+    async function attachedAgent(manager: PtySessionManager): Promise<number> {
+      dispatch(
+        { type: 'resumeConversation', sessionId, directoryPath: workDir },
+        ctx({ runtime, ptyManager: manager }),
+      );
+      await settle();
+      const [[id]] = [...store];
+      return id;
+    }
+
+    it('stopAgentSession stops the background session, closes its terminal and removes the agent', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const { stops } = cli();
+      const { manager, spawned } = workingPtyManager();
+      const id = await attachedAgent(manager);
+
+      dispatch({ type: 'stopAgentSession', id }, ctx({ runtime, ptyManager: manager }));
+      // A second press while the first waits on the CLI stops nothing more.
+      dispatch({ type: 'stopAgentSession', id }, ctx({ runtime, ptyManager: manager }));
+      await settle();
+
+      expect(stops()).toEqual([['stop', '7fdcf719']]);
+      expect(spawned[0].killSignals.length).toBeGreaterThan(0);
+      expect(manager.has(id)).toBe(false);
+      expect(store.has(id)).toBe(false);
+      expect(sent.filter((m) => m.type === 'agentSessionStopFailed')).toEqual([]);
+      // The list was asked again: the row no longer reads "Background".
+      expect(claudeProvider.liveSessions!().some((s) => s.sessionId === sessionId)).toBe(false);
+      log.mockRestore();
+    });
+
+    it('stopAgentSession keeps the agent and tells the sender why when claude stop fails', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { stops } = cli({ refuse: "No job matching '7fdcf719'. Run 'claude agents'" });
+      const { manager, spawned } = workingPtyManager();
+      const id = await attachedAgent(manager);
+
+      dispatch({ type: 'stopAgentSession', id }, ctx({ runtime, ptyManager: manager }));
+      await settle();
+
+      expect(stops()).toHaveLength(1);
+      expect(store.has(id)).toBe(true);
+      expect(manager.has(id)).toBe(true);
+      expect(spawned[0].killSignals).toHaveLength(0);
+      expect(sent).toContainEqual({
+        type: 'agentSessionStopFailed',
+        id,
+        reason: "No job matching '7fdcf719'. Run 'claude agents'",
+      });
+      error.mockRestore();
+    });
+
+    it('stopAgentSession never stops a session that runs in another terminal', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { stops } = cli({ kind: 'interactive' });
+      store.set(9, { ...makeAgent(9), sessionId, isExternal: true });
+
+      dispatch(
+        { type: 'stopAgentSession', id: 9 },
+        ctx({ runtime, ptyManager: workingPtyManager().manager }),
+      );
+      await settle();
+
+      expect(stops()).toEqual([]);
+      expect(store.has(9)).toBe(true);
+      expect(sent).toContainEqual(
+        expect.objectContaining({ type: 'agentSessionStopFailed', id: 9 }),
+      );
+      warn.mockRestore();
+    });
+
+    it('stopAgentSession from an untokened client stops nothing', async () => {
+      const { stops } = cli();
+      store.set(9, { ...makeAgent(9), sessionId, isExternal: true });
+
+      dispatch(
+        { type: 'stopAgentSession', id: 9 },
+        ctx({ runtime, ptyManager: workingPtyManager().manager, privileged: false }),
+      );
+      await settle();
+
+      expect(stops()).toEqual([]);
+      expect(store.has(9)).toBe(true);
+    });
+
+    it('webviewReady says which agents run in the background', async () => {
+      cli();
+      await claudeProvider.refreshLiveSessions!();
+      store.set(9, { ...makeAgent(9), sessionId, isExternal: true });
+      store.set(10, makeAgent(10));
+
+      dispatch({ type: 'webviewReady' }, ctx({ runtime, ptyManager: workingPtyManager().manager }));
+
+      expect(sent).toContainEqual({ type: 'agentBackgroundSessions', agents: { 9: '7fdcf719' } });
+    });
   });
 
   // ── closeAgent ───────────────────────────────────────────────
@@ -1591,6 +1714,7 @@ describe('clientMessageHandler: read-only (untokened) clients', () => {
     for (const msg of [
       { type: 'launchAgent' },
       { type: 'closeAgent', id: 1 },
+      { type: 'stopAgentSession', id: 1 },
       { type: 'saveLayout', layout: { version: 1, cols: 1, rows: 1, tiles: [0], furniture: [] } },
       { type: 'saveAgentSeats', seats: { 1: { palette: 1 } } },
       { type: 'setSoundEnabled', enabled: false },

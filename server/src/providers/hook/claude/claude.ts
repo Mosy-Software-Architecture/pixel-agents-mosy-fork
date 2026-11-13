@@ -15,6 +15,7 @@ import {
   createAgentsList,
   runClaudeCli,
   startBackgroundSession,
+  stopBackgroundSession,
 } from './backgroundSessions.js';
 import {
   areHooksInstalled as installerAreHooksInstalled,
@@ -442,6 +443,7 @@ export const claudeProvider: HookProvider = {
       },
     });
   },
+  stopBackgroundSession: (backgroundId) => stopBackgroundSession(backgroundId, cliRunner),
 
   team: claudeTeamProvider,
   usageBridge: claudeUsageBridge,

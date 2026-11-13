@@ -7,6 +7,12 @@ import {
   CARD_CONTEXT_BAR_HEIGHT_PX,
   CARD_MUGSHOT_CROP_TOP_ROW,
 } from '../constants.js';
+import {
+  backgroundSessionOf,
+  pressStop,
+  stopStateOf,
+  subscribeBackgroundSessions,
+} from '../office/backgroundSessions.js';
 import { ContextBar } from '../office/ContextBar.js';
 import { contextLeft, useAgentContextUsed } from '../office/contextGauge.js';
 import { pendingAckOf, subscribePendingAck } from '../office/pendingAck.js';
@@ -19,8 +25,8 @@ import {
   subscribeAgentSessionInfo,
 } from '../office/sessionLabel.js';
 import { AgentCardLabel } from './AgentCardLabel.js';
-import type { CardVariant, CloseMode } from './cardBar.js';
-import { cardTitleLines } from './cardBar.js';
+import type { CardVariant, CloseMode, StopPhase } from './cardBar.js';
+import { cardTitleLines, stopMode, stopTitle } from './cardBar.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { STATUS_DOT } from './statusDot.js';
 import { Button } from './ui/Button.js';
@@ -52,6 +58,15 @@ const CLOSE_MODE: Record<CloseMode, string> = {
   hidden: 'invisible',
 };
 
+// The skull: grey at rest, red under the pointer; red and pulsing while
+// armed, red while stopping, amber when the stop failed.
+const STOP_COLOR: Record<StopPhase | 'rest', string> = {
+  rest: 'text-text-muted! hover:text-status-error!',
+  armed: 'text-status-error! pending-ack-pulse',
+  stopping: 'text-status-error! cursor-default',
+  failed: 'text-warning! hover:text-status-error!',
+};
+
 interface AgentCardProps {
   agentId: number;
   variant: CardVariant;
@@ -71,6 +86,10 @@ interface AgentCardProps {
   close?: CloseMode;
   onSelect: (agentId: number) => void;
   onClose: (agentId: number) => void;
+  /** Stop the agent's background session (the skull, two presses: the first
+   *  arms it). Absent where this office may not (read-only, VS Code); the
+   *  skull shows only on an agent whose session runs in the background. */
+  onStopSession?: (agentId: number) => void;
 }
 
 /** One agent's card in the terminal sidebar — on the desktop column its
@@ -87,12 +106,23 @@ export function AgentCard({
   close = 'shown',
   onSelect,
   onClose,
+  onStopSession,
 }: AgentCardProps) {
   const contextUsed = useAgentContextUsed(agentId);
   const session = useSyncExternalStore(subscribeAgentSessionInfo, () => agentSessionInfo(agentId));
   const title = [...useCardTitle(agentId, appearance.palette, session), activity].join('\n');
   // The agent rang and nobody has looked yet (office/pendingAck.ts).
   const pending = useSyncExternalStore(subscribePendingAck, () => pendingAckOf(agentId));
+  // Its session runs in the background: the skull can stop it.
+  const backgroundId = useSyncExternalStore(subscribeBackgroundSessions, () =>
+    backgroundSessionOf(agentId),
+  );
+  const stopState = useSyncExternalStore(subscribeBackgroundSessions, () => stopStateOf(agentId));
+  const stop = stopMode(close, {
+    backgroundId,
+    canStop: onStopSession !== undefined,
+    phase: stopState?.phase,
+  });
   return (
     <div
       className={`group relative pointer-events-auto flex items-stretch gap-1 p-1 cursor-pointer border-2 shrink-0 ${CARD_VARIANT[variant]}`}
@@ -127,6 +157,26 @@ export function AgentCard({
             data-testid="card-pending-ack"
             data-pending={pending}
           />
+        )}
+        {/* The skull, over the mug shot's top-left corner (the × has the
+            top-right): stops the session, which runs in the background. */}
+        {stop !== null && backgroundId !== undefined && onStopSession && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              pressStop(agentId, onStopSession);
+            }}
+            title={stopTitle(stopState?.phase, backgroundId, stopState?.reason)}
+            aria-label={stopTitle(stopState?.phase, backgroundId, stopState?.reason)}
+            aria-disabled={stopState?.phase === 'stopping' || undefined}
+            data-testid="card-stop-session"
+            data-stop-phase={stopState?.phase ?? 'rest'}
+            className={`absolute top-0 left-0 z-20 bg-bg-dark! ${STOP_COLOR[stopState?.phase ?? 'rest']} ${CLOSE_MODE[stop]}`}
+          >
+            <PixelIcon name="skull" />
+          </Button>
         )}
       </span>
       {/* Close on top, status dot at the bottom, both centred over the
