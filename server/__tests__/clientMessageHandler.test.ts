@@ -15,7 +15,11 @@ import { getHooksEnabled, readConfig, setHooksEnabled } from '../src/configPersi
 import { MAX_CHARACTER_REPEAT, TERMINAL_REQUIRES_TOKEN_REASON } from '../src/constants.js';
 import { FileStateAdapter } from '../src/fileStateAdapter.js';
 import { getPaletteCount, setExternalCharacterCount } from '../src/paletteAssigner.js';
-import { claudeProvider } from '../src/providers/hook/claude/claude.js';
+import {
+  claudeProvider,
+  disableClaudeAgentsList,
+  enableClaudeAgentsList,
+} from '../src/providers/hook/claude/claude.js';
 import { CLAUDE_HOOK_EVENTS } from '../src/providers/hook/claude/constants.js';
 import type { IPty, PtyModule } from '../src/terminal/ptyModule.js';
 import { PtySessionManager } from '../src/terminal/ptySessionManager.js';
@@ -1391,6 +1395,88 @@ describe('clientMessageHandler: standalone terminal control plane', () => {
 
     expect(store.size).toBe(0);
     expect(broadcasts).toHaveLength(0);
+  });
+
+  // ── A session in Claude Code's background service ────────────
+
+  describe('a session that runs in the background', () => {
+    const sessionId = '7fdcf719-fd04-418f-b911-6a99f154c1e5';
+    let workDir: string;
+
+    beforeEach(() => {
+      workDir = fs.realpathSync(fs.mkdtempSync(path.join(tempHome, 'work-')));
+      const projectDir = claudeProvider.getSessionDirs!(workDir)[0];
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDir, `${sessionId}.jsonl`),
+        `${JSON.stringify({ type: 'ai-title', aiTitle: 'In the background' })}\n`,
+      );
+      // `claude agents --json` lists it: its worker runs (pid 25624).
+      enableClaudeAgentsList(async () =>
+        JSON.stringify([
+          { pid: 25624, id: '7fdcf719', kind: 'background', sessionId, status: 'idle' },
+        ]),
+      );
+    });
+
+    afterEach(() => disableClaudeAgentsList());
+
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('pressing its conversation attaches to it, and its card × only detaches', async () => {
+      const { manager, spawnArgs, spawned } = workingPtyManager();
+      dispatch(
+        { type: 'resumeConversation', sessionId, directoryPath: workDir },
+        ctx({ runtime, ptyManager: manager }),
+      );
+      // A second press while the first asks the CLI opens nothing more.
+      dispatch(
+        { type: 'resumeConversation', sessionId, directoryPath: workDir },
+        ctx({ runtime, ptyManager: manager }),
+      );
+      await flush();
+
+      expect(spawnArgs).toEqual([['attach', '7fdcf719']]);
+      const [[id, agent]] = [...store];
+      expect(agent.sessionId).toBe(sessionId);
+
+      dispatch({ type: 'closeAgent', id }, ctx({ runtime, ptyManager: manager }));
+      expect(spawned[0].killSignals.length).toBeGreaterThan(0);
+      expect(store.has(id)).toBe(true);
+    });
+
+    it('its conversation row says it runs in the background, once the CLI has answered', async () => {
+      const { manager } = workingPtyManager();
+      // The sidebar lists the host Directory (the server's cwd).
+      const cwdSessions = claudeProvider.getSessionDirs!(process.cwd())[0];
+      fs.mkdirSync(cwdSessions, { recursive: true });
+      fs.copyFileSync(
+        path.join(claudeProvider.getSessionDirs!(workDir)[0], `${sessionId}.jsonl`),
+        path.join(cwdSessions, `${sessionId}.jsonl`),
+      );
+      dispatch({ type: 'requestConversations' }, ctx({ runtime, ptyManager: manager }));
+      await flush();
+
+      const rowsOf = (m: Record<string, unknown>) =>
+        (
+          m as unknown as {
+            directories: Array<{
+              conversations: Array<{ sessionId: string; liveElsewhere?: unknown }>;
+            }>;
+          }
+        ).directories.flatMap((d) => d.conversations);
+      const lists = sent.filter((m) => m.type === 'conversationsLoaded');
+      // At once from the cache (nothing asked yet), then again with the answer.
+      expect(lists).toHaveLength(2);
+      expect(
+        rowsOf(lists[0]).find((r) => r.sessionId === sessionId)?.liveElsewhere,
+      ).toBeUndefined();
+      expect(rowsOf(lists[1]).find((r) => r.sessionId === sessionId)?.liveElsewhere).toEqual({
+        status: 'idle',
+        kind: 'background',
+        backgroundId: '7fdcf719',
+      });
+    });
   });
 
   // ── closeAgent ───────────────────────────────────────────────

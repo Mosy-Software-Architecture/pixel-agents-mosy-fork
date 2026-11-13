@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Conversation } from '../../core/src/messages.js';
-import { goesToAgent, liveElsewhereBadge } from '../src/conversations/liveElsewhere.js';
+import {
+  goesToAgent,
+  liveElsewhereBadge,
+  liveElsewhereTitle,
+} from '../src/conversations/liveElsewhere.js';
 
 const conversation = (extra: Partial<Conversation> = {}): Conversation => ({
   sessionId: 's',
@@ -27,5 +31,24 @@ describe('a conversation open in another terminal', () => {
   it('says what the other terminal is doing when the CLI knows', () => {
     expect(liveElsewhereBadge({ status: 'busy' })).toBe('Open elsewhere · busy');
     expect(liveElsewhereBadge({})).toBe('Open elsewhere');
+  });
+
+  it('names a background session, with what it is doing and what opening it does', () => {
+    expect(liveElsewhereBadge({ kind: 'background', status: 'idle', state: 'working' })).toBe(
+      'Background · idle',
+    );
+    // Waiting for the user beats the worker's own status.
+    expect(liveElsewhereBadge({ kind: 'background', status: 'idle', state: 'blocked' })).toBe(
+      'Background · blocked',
+    );
+    // A job whose worker is not running has only a state.
+    expect(liveElsewhereBadge({ kind: 'background', state: 'working' })).toBe(
+      'Background · working',
+    );
+    expect(liveElsewhereBadge({ kind: 'background' })).toBe('Background');
+    expect(
+      liveElsewhereTitle({ kind: 'background', name: 'surv1', backgroundId: '095e9c03' }),
+    ).toBe('Running in the background as "surv1": opening it attaches (claude attach 095e9c03)');
+    expect(liveElsewhereTitle({ name: 'lead' })).toBe('Open in another terminal as "lead"');
   });
 });

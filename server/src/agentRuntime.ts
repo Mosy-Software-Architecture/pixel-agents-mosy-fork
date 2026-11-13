@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import type { HookProvider } from '../../core/src/provider.js';
+import type { PersistedAgent } from '../../core/src/schemas.js';
 import { isPersistedSpawnChild, restoredAgentInit } from './agentPersistence.js';
 import { createAgentState } from './agentState.js';
 import type { AgentStateStore } from './agentStateStore.js';
@@ -527,12 +528,15 @@ export class AgentRuntime {
    * Re-create external agents from the adapter's persistence on startup.
    * Only external agents are restorable here (no terminal to rebind).
    * VS Code uses its own restoreAgents() in agentManager.ts to also handle
-   * terminal agents via vscode.window.terminals.
+   * terminal agents via vscode.window.terminals. `records` replaces the saved
+   * list (the standalone startup hands in the saved list with the agents whose
+   * session outlived the last server in the CLI's background service marked
+   * external).
    */
-  restoreExternalAgents(): void {
+  restoreExternalAgents(records?: readonly PersistedAgent[]): void {
     const adapter = this.store.getAdapter();
     if (!adapter) return;
-    const persisted = adapter.loadAgents();
+    const persisted = records ?? adapter.loadAgents();
     if (persisted.length === 0) return;
 
     let maxId = 0;

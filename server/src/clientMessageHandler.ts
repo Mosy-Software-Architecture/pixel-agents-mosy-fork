@@ -52,7 +52,10 @@ import {
   remoteSessionOf,
 } from './remoteHosts.js';
 import { launchRemoteAgent } from './terminal/remoteAgentLauncher.js';
-import { launchStandaloneAgent } from './terminal/standaloneAgentLauncher.js';
+import {
+  launchBackgroundAgent,
+  launchStandaloneAgent,
+} from './terminal/standaloneAgentLauncher.js';
 import type { TerminalSessions } from './terminal/terminalSessions.js';
 import { applyUsageBridgeChoice, usageSnapshotMessages } from './usageLimits.js';
 
@@ -124,6 +127,10 @@ const KEY_SHOW_DIRECTORY_NAMES = 'pixel-agents.showDirectoryNames';
 const conversationProvider = hookProviders.find(
   (provider) => provider.conversationTitle && provider.buildLaunchCommand,
 );
+
+/** Sessions a `resumeConversation` is opening right now (it waits for the
+ *  CLI's list before it launches). */
+const resumesInFlight = new Set<string>();
 
 /** The sessions open in a terminal the office did not launch: the CLI's
  *  running processes, less this office's own terminals. */
@@ -218,9 +225,11 @@ export function handleClientMessage(
       // Permission posture is a persisted per-host setting, never a per-launch
       // field: the client sends only where to launch. Every launch comes from a
       // drawer row and carries its Directory's path; no directoryPath falls
-      // back to the server cwd (launchStandaloneAgent's own default).
+      // back to the server cwd (launchStandaloneAgent's own default). The
+      // session starts in the CLI's background service and the terminal
+      // attaches to it, so the agent outlives this server (launchBackgroundAgent).
       const picked = rosterPick(msg.palette, getPaletteCount());
-      const launched = launchStandaloneAgent(
+      const launched = launchBackgroundAgent(
         { store, runtime, ptyManager: ctx.ptyManager, provider: claudeProvider },
         {
           directoryPath: msg.directoryPath as string | undefined,
@@ -230,9 +239,13 @@ export function handleClientMessage(
       );
       // A roster pick moves to the front of every office's roster, once an
       // agent wears it: a launch that failed (no PTY, no command) records nothing.
-      if (launched === null) break;
-      const recent = recordCharacterUse(picked);
-      if (recent) store.broadcast(recent);
+      const recordPick = (id: number | null) => {
+        if (id === null) return;
+        const recent = recordCharacterUse(picked);
+        if (recent) store.broadcast(recent);
+      };
+      if (launched instanceof Promise) void launched.then(recordPick);
+      else recordPick(launched);
       break;
     }
 
@@ -265,6 +278,10 @@ export function handleClientMessage(
       reply();
       // Remote hosts answer over ssh: the list goes again once they have.
       void refreshRemoteHosts(remoteHosts)?.then(reply);
+      // So does the CLI's list of background sessions, when its answer changed.
+      void conversationProvider.refreshLiveSessions?.().then((changed) => {
+        if (changed) reply();
+      });
       break;
     }
 
@@ -300,22 +317,36 @@ export function handleClientMessage(
 
     case 'resumeConversation': {
       if (!runtime || !ctx.ptyManager || !conversationProvider) break;
-      const resume = resumeRequest(store, conversationProvider, msg);
-      if (!resume) break;
-      launchStandaloneAgent(
-        { store, runtime, ptyManager: ctx.ptyManager, provider: conversationProvider },
-        {
-          directoryPath: resume.directoryPath,
-          bypassPermissions: adapter?.getSetting(KEY_BYPASS_PERMISSIONS, false) ?? false,
-          palette: resume.look?.palette,
-          resume: {
-            sessionId: resume.sessionId,
-            transcript: resume.transcript,
-            seatId: resume.look?.seatId,
-            agentId: resume.agentId,
-          },
-        },
-      );
+      const { ptyManager } = ctx;
+      const provider = conversationProvider;
+      const sessionId = msg.sessionId;
+      // One open at a time per session: the check below waits for the CLI,
+      // and a second press meanwhile would pass it too.
+      if (typeof sessionId !== 'string' || resumesInFlight.has(sessionId)) break;
+      resumesInFlight.add(sessionId);
+      // Whether it runs in the background (attach, never resume) is asked of
+      // the CLI anew: a resume beside a background session starts a copy.
+      void (provider.refreshLiveSessions?.() ?? Promise.resolve(false))
+        .then(() => {
+          const resume = resumeRequest(store, provider, msg);
+          if (!resume) return;
+          launchStandaloneAgent(
+            { store, runtime, ptyManager, provider },
+            {
+              directoryPath: resume.directoryPath,
+              bypassPermissions: adapter?.getSetting(KEY_BYPASS_PERMISSIONS, false) ?? false,
+              palette: resume.look?.palette,
+              resume: {
+                sessionId: resume.sessionId,
+                transcript: resume.transcript,
+                seatId: resume.look?.seatId,
+                agentId: resume.agentId,
+                attach: resume.attach,
+              },
+            },
+          );
+        })
+        .finally(() => resumesInFlight.delete(sessionId));
       break;
     }
 

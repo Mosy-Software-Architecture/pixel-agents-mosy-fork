@@ -1284,9 +1284,13 @@ components:
 
     LiveElsewhere:
       description: >-
-        The conversation's session is running right now in a terminal the
-        office did not launch (as the CLI's own registry of running processes
-        says): resuming it would start a second process on the same session.
+        The conversation's session is running right now somewhere the office
+        did not launch: in another terminal (as the CLI's own registry of
+        running processes says), where resuming it starts a second process on
+        the same session, or in the CLI's background service (`kind:
+        background`, Claude Code's `claude --bg`), where opening it attaches
+        to it instead (`claude attach`) and closing the office's terminal only
+        detaches.
       type: object
       additionalProperties: false
       properties:
@@ -1296,6 +1300,27 @@ components:
         status:
           type: string
           description: What that process is doing, in the CLI's words (Claude Code - busy, idle, waiting, shell).
+        kind:
+          $ref: '#/components/schemas/LiveSessionKind'
+        state:
+          type: string
+          description: >-
+            A background session's state, in the CLI's words (Claude Code -
+            working, blocked, ...; blocked waits for the user). Absent
+            otherwise.
+        backgroundId:
+          type: string
+          description: >-
+            A background session's short id, the one `claude attach <id>`
+            takes. Absent otherwise.
+
+    LiveSessionKind:
+      description: >-
+        Where a live session runs: `interactive` in a terminal, `background`
+        in the CLI's background service with no terminal. Absent means
+        interactive.
+      type: string
+      enum: [interactive, background]
 
     AgentDiagnostics:
       description: Connection diagnostics for all agents (response to requestDiagnostics).

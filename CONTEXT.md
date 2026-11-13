@@ -29,6 +29,10 @@ _Avoid_: bot, terminal (as a synonym), session (as a synonym)
 **Headless agent**:
 An agent with no terminal — a non-interactive run adopted from outside the office, for example. A full citizen: it has a seat and can be selected, but there is no terminal to focus. Agents it spawns are sub-agents or teammates like anyone else's. Optionally drawn as a Ghost.
 
+**Background session**:
+A session running in the CLI's background service with no terminal (Claude Code's `claude --bg`). It outlives the terminals attached to it and the office server. The office's + Agent starts its agents as background sessions and attaches its terminal to them; while no terminal is attached, the agent is Headless. Opening one attaches (`claude attach`); it is never resumed.
+_Avoid_: daemon session, detached agent
+
 **Character**:
 The animated pixel-art figure representing an agent in the office. An agent has a status and a session; its character has a position and an animation state.
 _Avoid_: avatar, sprite (a sprite is the image asset, not the figure)

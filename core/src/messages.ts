@@ -534,7 +534,12 @@ export interface Conversation {
 export interface LiveElsewhere {
   name?: string;
   status?: string;
+  kind?: LiveSessionKind;
+  state?: string;
+  backgroundId?: string;
 }
+
+export type LiveSessionKind = 'interactive' | 'background';
 
 export interface RemoteHostConversations {
   name: string;

@@ -286,6 +286,49 @@ export async function arrangeNextClaudeInvocation(
   writeScenarioQueue(tmpHome, queue);
 }
 
+/**
+ * Turn on the mock's background sessions (`claude --bg`, `agents --json`,
+ * `attach`): off, `--bg` fails like an older CLI and + Agent launches in its
+ * terminal as before (what every other spec exercises).
+ */
+export function enableMockBackgroundSessions(tmpHome: string): void {
+  const root = path.join(tmpHome, '.claude-mock');
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(path.join(root, 'background-enabled'), '');
+}
+
+/** The mock's live background sessions (`claude --bg` workers). */
+export function mockBackgroundSessions(
+  tmpHome: string,
+): Array<{ id: string; sessionId: string; pid: number }> {
+  try {
+    const entries = JSON.parse(
+      fs.readFileSync(path.join(tmpHome, '.claude-mock', 'background.json'), 'utf8'),
+    ) as Array<{ id: string; sessionId: string; pid: number }>;
+    return entries.filter((entry) => {
+      try {
+        process.kill(entry.pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** End the mock's background workers: they are detached and outlive the host. */
+export function stopMockBackgroundSessions(tmpHome: string): void {
+  for (const entry of mockBackgroundSessions(tmpHome)) {
+    try {
+      process.kill(entry.pid, 'SIGTERM');
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
 function getMockClaudeBinaryPath(tmpHome: string): string {
   const binDir = path.resolve(tmpHome, '..', 'bin');
   return path.join(binDir, process.platform === 'win32' ? 'claude.cmd' : 'claude');

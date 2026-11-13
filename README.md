@@ -39,7 +39,8 @@ Claude Code is supported today; Codex, Gemini, Cursor, and others are on the roa
 - **Office layout editor** — design your office with floors, walls, furniture, and named Areas; layouts are saved across windows, export as JSON, and take external asset packs
 - **Your own team** — design your agents: a wardrobe of bodies, hair, clothes and accessories, colour pickers, a pixel editor, and custom items. The pixel art is based on the amazing work of [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack).
 - **In the browser and on your phone** — the standalone office launches agents into an embedded terminal. On a phone, via Tailscale, it can become an app with the office and the terminal a swipe apart
-- **Recent conversations** — past sessions listed per Directory, resumed with one click as the character they had
+- **Recent conversations** — past sessions listed per Directory, resumed with one click as the character they had; a session running in Claude Code's background service is attached to instead
+- **Agents that outlive the office** — the standalone office starts its agents as Claude Code background sessions, so closing a terminal or stopping the server leaves them running
 - **Remote hosts** — the Claude Code sessions of another machine you reach over ssh, opened in the embedded terminal with a character for them
 - **Usage and context bars** — health bars for your plan limits, and one on every agent for the context it has left
 - **Office radio** — procedural 8-bit background music with moods and shareable song codes
@@ -92,6 +93,8 @@ pixel-agents --host 127.0.0.1 --port 3100
 pixel-agents --no-terminal
 pixel-agents --help
 ```
+
+**Agents run in the background.** With Claude Code 2.1.316 or newer, **+** starts the session in Claude Code's background service (`claude --bg`) and the office's terminal attaches to it (`claude attach <id>`). Closing that terminal, or stopping the server, only detaches: the session keeps running, its character stays in the office without a terminal, and it comes back that way when the server starts again. Its conversation row reads **Background · idle** (or what it is doing); pressing it attaches again. Sessions you start yourself with `claude --bg` show the same way. In the attached terminal, Ctrl+Z detaches and ← opens Claude Code's own agent view. In a folder Claude Code does not trust yet, or with **Skip Permissions** on before you accepted its disclaimer once in a terminal, **+** starts the session in the terminal as before, where Claude Code can ask; that session ends with its terminal. An idle background session keeps running until you stop it (`claude stop <id>`, or from `claude agents`).
 
 The printed URL carries a `?token=`. Without it you can watch the office in a sort of read-only mode: no agents can be launched, terminals are not shown, and layout and settings cannot be edited. The token is kept in `~/.pixel-agents/standalone-token`, so a bookmark keeps working if you also fix `--port`. Treat the URL as a secret: whoever holds it can do all of the above.
 

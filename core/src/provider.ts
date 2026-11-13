@@ -165,13 +165,32 @@ export type SessionInfoRecord =
  *  the CLI itself registers it (HookProvider.liveSessions). */
 export interface LiveCliSession {
   sessionId: string;
-  /** The process running it. */
-  pid: number;
+  /** The process running it. Absent for a background session whose worker is
+   *  not running right now (the CLI still lists it, and attaching starts it). */
+  pid?: number;
   /** The session's name, as the CLI shows it. */
   name?: string;
   /** What the process is doing, in the CLI's words (Claude: busy, idle,
    *  waiting, shell). */
   status?: string;
+  /** Where it runs: in a terminal (`interactive`, the default) or under the
+   *  CLI's background service with no terminal (`background`, Claude's
+   *  `claude --bg`), where opening it means attaching to it. */
+  kind?: 'interactive' | 'background';
+  /** A background session's own id for the CLI's commands (Claude: the short
+   *  id `claude attach <id>` takes). */
+  backgroundId?: string;
+  /** A background session's state, in the CLI's words (Claude: working,
+   *  blocked, ...): `blocked` waits for the user. */
+  state?: string;
+}
+
+/** A session started in the CLI's background service
+ *  (HookProvider.startBackgroundSession). */
+export interface BackgroundSessionStart {
+  sessionId: string;
+  /** The id the CLI's commands take (Claude: `claude attach <id>`). */
+  backgroundId: string;
 }
 
 // ── Hook-based Provider (CLIs with hooks APIs) ────────────────
@@ -250,11 +269,14 @@ export interface HookProvider {
    *  existing session `sessionId` (its transcript) instead of starting one. Only
    *  a provider with `conversationTitle` is asked to resume (the conversation
    *  list is its), and it must honour `resume`: ignoring it would start a new
-   *  session under the old id. */
+   *  session under the old id. `attach`: the session runs in the CLI's
+   *  background service under this id (LiveCliSession.backgroundId): open it
+   *  in this terminal instead of starting a process of its own on it; closing
+   *  the terminal leaves it running. */
   buildLaunchCommand?(
     sessionId: string,
     cwd: string,
-    opts?: { bypassPermissions?: boolean; resume?: boolean },
+    opts?: { bypassPermissions?: boolean; resume?: boolean; attach?: string },
   ): {
     command: string;
     args: string[];
@@ -288,9 +310,28 @@ export interface HookProvider {
    *  text record starts a turn. */
   startsNoTurn?(record: unknown): boolean;
   /** The sessions of this CLI running right now on this host, in any terminal
-   *  (the office's own included), so the sidebar can warn before resuming one
-   *  that is still open elsewhere. Undefined = this CLI keeps no such record. */
+   *  (the office's own included) or in its background service, so the
+   *  sidebar can mark the ones open elsewhere and attach to a background one
+   *  instead of resuming it. Never blocks: a source that has to ask the CLI
+   *  answers from its last answer (refreshLiveSessions). Undefined = this CLI
+   *  keeps no such record. */
   liveSessions?(): LiveCliSession[];
+  /** Ask the CLI anew for what liveSessions reads from a cache, for a decision
+   *  that must not act on an old answer (attach or resume). Resolves true when
+   *  the answer changed. Undefined = liveSessions is always current. */
+  refreshLiveSessions?(): Promise<boolean>;
+  /** Start a session in the CLI's background service in `cwd` (Claude:
+   *  `claude --bg`), so it outlives the office; the office then attaches to it
+   *  (buildLaunchCommand `attach`). Resolves null when the CLI cannot (an old
+   *  CLI, a folder it does not trust yet, a disclaimer not accepted): the
+   *  caller launches in a terminal as before, where the CLI can ask. Returns
+   *  null at once when this host does not use the background service (so the
+   *  launch stays synchronous). `env` is the environment to run the CLI with.
+   *  Undefined = no background service. */
+  startBackgroundSession?(
+    cwd: string,
+    opts: { bypassPermissions?: boolean; env: Record<string, string> },
+  ): Promise<BackgroundSessionStart | null> | null;
 
   /** Optional account-usage reporting (the office's usage bars). */
   readonly usageBridge?: UsageBridge;

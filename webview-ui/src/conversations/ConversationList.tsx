@@ -22,7 +22,7 @@ import {
 import { prefersReducedMotion } from '../hooks/usePresence.js';
 import { useShowDirectoryNames } from '../hooks/useShowDirectoryNames.js';
 import { shownDirectoryName } from '../office/directoryNames.js';
-import { goesToAgent, liveElsewhereBadge } from './liveElsewhere.js';
+import { goesToAgent, liveElsewhereBadge, liveElsewhereTitle } from './liveElsewhere.js';
 import { recentSection } from './recent.js';
 import {
   remoteCanOpen,
@@ -598,12 +598,9 @@ export function ConversationRow({
         {liveElsewhere && (
           <span
             data-testid="conversation-live-elsewhere"
-            title={
-              liveElsewhere.name
-                ? `Open in another terminal as "${liveElsewhere.name}"`
-                : 'Open in another terminal'
-            }
-            className="text-2xs text-warning overflow-hidden text-ellipsis whitespace-nowrap"
+            data-live-kind={liveElsewhere.kind ?? 'interactive'}
+            title={liveElsewhereTitle(liveElsewhere)}
+            className={`text-2xs ${liveElsewhere.kind === 'background' ? 'text-text-muted' : 'text-warning'} overflow-hidden text-ellipsis whitespace-nowrap`}
           >
             {liveElsewhereBadge(liveElsewhere)}
           </span>

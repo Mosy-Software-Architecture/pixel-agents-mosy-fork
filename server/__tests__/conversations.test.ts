@@ -219,6 +219,37 @@ describe('conversations', () => {
       const none = { ...provider, liveSessions: undefined } as HookProvider;
       expect(sessionsLiveElsewhere(none, new Set()).size).toBe(0);
     });
+
+    it('marks a background session as such, even one with no worker running, over a terminal on it', () => {
+      const running = {
+        ...provider,
+        liveSessions: () => [
+          // A terminal resumed it too; the background service still runs it.
+          { sessionId: uuid(1), pid: 300, status: 'busy' },
+          {
+            sessionId: uuid(1),
+            pid: 301,
+            status: 'idle',
+            kind: 'background',
+            backgroundId: 'aaaaaaaa',
+            state: 'blocked',
+            name: 'surv1',
+          },
+          // Listed by `claude agents --json` only: its worker is not running.
+          { sessionId: uuid(2), kind: 'background', backgroundId: 'bbbbbbbb', state: 'working' },
+        ],
+      } as HookProvider;
+      expect(Object.fromEntries(sessionsLiveElsewhere(running, new Set([300])))).toEqual({
+        [uuid(1)]: {
+          name: 'surv1',
+          status: 'idle',
+          kind: 'background',
+          state: 'blocked',
+          backgroundId: 'aaaaaaaa',
+        },
+        [uuid(2)]: { kind: 'background', state: 'working', backgroundId: 'bbbbbbbb' },
+      });
+    });
   });
 
   it('lists the newest five, running ones included, leaving out untitled past ones', () => {
@@ -577,6 +608,30 @@ describe('conversations', () => {
         ['Kitty', 5, true],
         ['Ours', 6, undefined],
       ]);
+    });
+
+    it('attaches to a session that runs in the background, into its Headless agent too', () => {
+      const store = new AgentStateStore();
+      const file = transcript(uuid(13), line({ type: 'ai-title', aiTitle: 'Bg' }), 1);
+      const background = {
+        ...provider,
+        liveSessions: () => [
+          { sessionId: uuid(13), kind: 'background', backgroundId: 'cccccccc', pid: 9 },
+        ],
+      } as HookProvider;
+      expect(
+        resumeRequest(store, background, { sessionId: uuid(13), directoryPath: '/w' }),
+      ).toEqual({
+        sessionId: uuid(13),
+        directoryPath: '/w',
+        transcript: file,
+        look: undefined,
+        attach: 'cccccccc',
+      });
+      store.set(8, { ...agent(8, uuid(13)), isExternal: true });
+      expect(
+        resumeRequest(store, background, { sessionId: uuid(13), directoryPath: '/w' }),
+      ).toMatchObject({ agentId: 8, attach: 'cccccccc' });
     });
 
     it('refuses for a provider that lists no conversations (it is never asked to resume)', () => {

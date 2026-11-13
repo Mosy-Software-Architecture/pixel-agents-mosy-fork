@@ -11,7 +11,7 @@ import type {
   FoundConversation,
   LiveElsewhere,
 } from '../../core/src/messages.js';
-import type { HookProvider } from '../../core/src/provider.js';
+import type { HookProvider, LiveCliSession } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import {
   CONVERSATION_LOOKS_MAX,
@@ -204,11 +204,13 @@ export function liveSessions(store: AgentStateStore): Map<string, LiveSession> {
 }
 
 /**
- * The sessions running right now in a terminal the office did not launch, by
- * session id: what the CLI's own registry of running processes lists
- * (HookProvider.liveSessions), less the processes in `ownPids` (the office's
- * terminals). Resuming one of these starts a second process on the session.
- * Empty when the provider keeps no such registry.
+ * The sessions running right now where the office did not launch them, by
+ * session id: what the CLI says runs (HookProvider.liveSessions: its registry
+ * of running processes, and its background service), less the processes in
+ * `ownPids` (the office's terminals). Resuming one in a terminal starts a
+ * second process on the session; one in the background service is attached
+ * to instead (`kind: 'background'`, which wins when a session is both).
+ * Empty when the provider keeps no such record.
  */
 export function sessionsLiveElsewhere(
   provider: HookProvider,
@@ -216,13 +218,35 @@ export function sessionsLiveElsewhere(
 ): Map<string, LiveElsewhere> {
   const elsewhere = new Map<string, LiveElsewhere>();
   for (const session of provider.liveSessions?.() ?? []) {
-    if (ownPids.has(session.pid) || elsewhere.has(session.sessionId)) continue;
-    elsewhere.set(session.sessionId, {
-      ...(session.name ? { name: session.name } : {}),
-      ...(session.status ? { status: session.status } : {}),
-    });
+    if (session.pid !== undefined && ownPids.has(session.pid)) continue;
+    const known = elsewhere.get(session.sessionId);
+    if (known && (known.kind === 'background' || session.kind !== 'background')) continue;
+    elsewhere.set(session.sessionId, liveElsewhereOf(session));
   }
   return elsewhere;
+}
+
+function liveElsewhereOf(session: LiveCliSession): LiveElsewhere {
+  return {
+    ...(session.name ? { name: session.name } : {}),
+    ...(session.status ? { status: session.status } : {}),
+    ...(session.kind === 'background'
+      ? {
+          kind: 'background' as const,
+          ...(session.state ? { state: session.state } : {}),
+          ...(session.backgroundId ? { backgroundId: session.backgroundId } : {}),
+        }
+      : {}),
+  };
+}
+
+/** The short id of the background session running `sessionId`, if the CLI
+ *  says one does (HookProvider.liveSessions): opening it means attaching. */
+export function backgroundIdOf(provider: HookProvider, sessionId: string): string | undefined {
+  return provider
+    .liveSessions?.()
+    .find((s) => s.kind === 'background' && s.sessionId === sessionId && s.backgroundId)
+    ?.backgroundId;
 }
 
 /** A resumable session id: a UUID, never anything a CLI could read as a flag. */
@@ -238,6 +262,9 @@ export interface ResumeRequest {
   /** The Headless agent running it (adopted from another terminal): it takes
    *  the new terminal, keeping its id, character and seat. */
   agentId?: number;
+  /** The session runs in the CLI's background service under this short id:
+   *  the terminal attaches to it (`claude attach`) instead of resuming it. */
+  attach?: string;
 }
 
 /**
@@ -247,7 +274,9 @@ export interface ResumeRequest {
  * becomes a CLI argument), the Directory isn't a string, an agent with a
  * terminal in the office already runs the session, or its transcript doesn't
  * exist. A session run by a Headless agent is resumed into that agent
- * (`agentId`): the CLI runs a second process on the same session id.
+ * (`agentId`): the CLI runs a second process on the same session id. A
+ * session live in the CLI's background service is attached to (`attach`),
+ * never resumed: a resume would start a copy beside it.
  */
 export function resumeRequest(
   store: AgentStateStore,
@@ -264,12 +293,14 @@ export function resumeRequest(
   if (holders.length > 0 && !headless) return null;
   const transcript = findTranscript(provider, directoryPath, sessionId);
   if (!transcript) return null;
+  const attach = backgroundIdOf(provider, sessionId);
   return {
     sessionId,
     directoryPath,
     transcript,
     look: conversationLook(sessionId),
     ...(headless ? { agentId: headless.id } : {}),
+    ...(attach ? { attach } : {}),
   };
 }
 
