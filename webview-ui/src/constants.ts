@@ -608,6 +608,14 @@ export const ROSTER_HOVER_CLOSE_DELAY_MS = 250;
 export const CARD_SCROLL_INTO_VIEW_MARGIN_PX = 8;
 /** How often the agent cards re-read their activity line. */
 export const CARD_ACTIVITY_REFRESH_MS = 500;
+/** How long a card's skull stays armed after its first press: a second press
+ *  within it stops the session, after it the skull rests again. */
+export const STOP_SESSION_ARM_MS = 4_000;
+/** How long a card's skull shows that its stop failed (the reason in its tooltip). */
+export const STOP_SESSION_FAILED_SHOW_MS = 8_000;
+/** The longest a card's skull waits for the server after sending the stop
+ *  (the CLI may take its timeout twice over); then it rests again. */
+export const STOP_SESSION_STOPPING_MAX_MS = 45_000;
 
 // ── Mobile key bar (MobileKeyBar) ────────────────────────────
 /** Arrow-key byte sequences the trackpad key writes to the PTY. */

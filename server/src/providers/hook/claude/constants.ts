@@ -137,6 +137,12 @@ export const CLAUDE_BACKGROUND_START_TIMEOUT_MS = 20_000;
  *  and the pause between them (it may not be listed at once). */
 export const CLAUDE_BACKGROUND_LOOKUP_ATTEMPTS = 10;
 export const CLAUDE_BACKGROUND_LOOKUP_INTERVAL_MS = 300;
+/** Stop a background session (`claude stop <short id>`): its worker ends, its
+ *  conversation stays (`claude attach <id>` would start it again). Exits 1
+ *  with "No job matching '<id>'" on stderr for an id it does not know. */
+export const CLAUDE_STOP_COMMAND = 'stop';
+/** How long `claude stop` may take. */
+export const CLAUDE_STOP_TIMEOUT_MS = 15_000;
 
 /** How far back a remote host's past sessions are listed (remoteListing.ts):
  *  transcripts written within this many days, besides the running ones. */

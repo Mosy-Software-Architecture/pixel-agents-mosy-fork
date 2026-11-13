@@ -332,6 +332,13 @@ export interface HookProvider {
     cwd: string,
     opts: { bypassPermissions?: boolean; env: Record<string, string> },
   ): Promise<BackgroundSessionStart | null> | null;
+  /** Stop a session running in the CLI's background service, by the id the
+   *  CLI's commands take (LiveCliSession.backgroundId; Claude: `claude stop
+   *  <id>`): the session ends, its transcript stays. Rejects with the CLI's
+   *  reason when it cannot. Only ever asked about a session the CLI lists as
+   *  background: a process in a terminal is never the office's to stop.
+   *  Undefined = no background service. */
+  stopBackgroundSession?(backgroundId: string): Promise<void>;
 
   /** Optional account-usage reporting (the office's usage bars). */
   readonly usageBridge?: UsageBridge;

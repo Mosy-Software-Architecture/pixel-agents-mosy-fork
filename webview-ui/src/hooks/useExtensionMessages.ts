@@ -7,6 +7,7 @@ import { startOfficeSync } from '../characters/officeSprites.js';
 import { cardOrderOf } from '../components/cardBar.js';
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
 import { applyAgentStatus } from '../office/agentStatusMessage.js';
+import { clearStop, setBackgroundSessions, stopFailed } from '../office/backgroundSessions.js';
 import { clearAgentContextUsed, setAgentContextUsed } from '../office/contextGauge.js';
 import { setShowDirectoryNames } from '../office/directoryNames.js';
 import type { ExistingAgentMeta, PendingAgent } from '../office/engine/existingAgents.js';
@@ -306,6 +307,7 @@ export function useExtensionMessages(
       clearAgentContextUsed(id);
       clearAgentSessionInfo(id);
       clearPendingAck(id);
+      clearStop(id);
     };
 
     // A dropped socket (a phone's screen going off, a server restart) loses
@@ -924,6 +926,12 @@ export function useExtensionMessages(
           host: msg.host as string | undefined,
           service: msg.remoteKind === 'service',
         });
+      } else if (msg.type === 'agentBackgroundSessions') {
+        // Whose card can stop its session (office/backgroundSessions.ts).
+        setBackgroundSessions(msg.agents);
+      } else if (msg.type === 'agentSessionStopFailed') {
+        console.error(`[Webview] Could not stop agent ${msg.id}'s session: ${msg.reason}`);
+        stopFailed(msg.id, msg.reason);
       }
     };
     const unsubscribe = transport.onMessage(handler);

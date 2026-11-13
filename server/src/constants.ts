@@ -264,3 +264,8 @@ export const REMOTE_SSH_CONNECT_TIMEOUT_S = 6;
 /** Under ~/.pixel-agents: the local copies of the remote transcripts open in
  *  the office (remote/<host>/<sessionId>.jsonl). */
 export const REMOTE_MIRROR_DIR_NAME = 'remote';
+
+/** How often the standalone server re-reads which agents' sessions run in the
+ *  CLI's background service (agentBackgroundSessions, the cards' stop button)
+ *  while the office has agents; agents coming and going re-read it at once. */
+export const BACKGROUND_SESSION_AGENTS_CHECK_MS = 10_000;

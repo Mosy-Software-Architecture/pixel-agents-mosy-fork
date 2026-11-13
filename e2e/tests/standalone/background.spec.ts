@@ -154,4 +154,72 @@ test.describe('Standalone / background sessions', () => {
         .getByTestId('conversation-live-elsewhere'),
     ).toHaveText('Background · idle', { timeout: 15_000 });
   });
+
+  test("the card's skull stops the background session, after a second press, and the agent leaves @area:standalone", async ({
+    page,
+    standalone,
+  }) => {
+    await setSettings(page, { alwaysShowLabels: true });
+    await waitForClaudeHookSetup(standalone.tmpHome);
+    enableMockBackgroundSessions(standalone.tmpHome);
+    await arrangeNextClaudeInvocation(standalone.tmpHome, backgroundScenario('stopped by skull'));
+
+    await launchFromDrawer(page, standalone.workspaceDir);
+    const card = agentCard(page, 1);
+    await expect(page.locator('.xterm').first()).toContainText(
+      'mock claude attached to background session',
+      { timeout: 15_000 },
+    );
+    await expectOverlayCount(page, 1);
+    const row = page
+      .getByTestId('conversation-sidebar')
+      .getByTestId('conversation-row')
+      .filter({ hasText: 'Work in the background' });
+    await expect(row.getByTestId('conversation-live-elsewhere')).toHaveText('Background · idle', {
+      timeout: 15_000,
+    });
+
+    // Its session runs in the background: the card offers the skull.
+    const skull = card.getByTestId('card-stop-session');
+    await expect(skull).toHaveCount(1, { timeout: 15_000 });
+    await card.hover();
+    // The first press only arms it: nothing is stopped.
+    await skull.click();
+    await expect(skull).toHaveAttribute('data-stop-phase', 'armed');
+    await page.waitForTimeout(500);
+    expect(mockBackgroundSessions(standalone.tmpHome)).toHaveLength(1);
+    await expect(card).toHaveCount(1);
+
+    // The second one stops it (`claude stop <id>`): terminal, card and character go.
+    await skull.click();
+    await expect
+      .poll(() => mockBackgroundSessions(standalone.tmpHome), { timeout: 15_000 })
+      .toEqual([]);
+    await expect(card).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator('.xterm')).toHaveCount(0);
+    await expectOverlayCount(page, 0);
+    // Its conversation stays, as a past one: no longer "Background".
+    await expect(row).toHaveCount(1);
+    await expect(row.getByTestId('conversation-live-elsewhere')).toHaveCount(0, {
+      timeout: 15_000,
+    });
+  });
+
+  test('an agent whose session does not run in the background gets no skull @area:standalone', async ({
+    page,
+    standalone,
+  }) => {
+    await setSettings(page, { alwaysShowLabels: true });
+    await waitForClaudeHookSetup(standalone.tmpHome);
+    // No background service: + Agent launches in the terminal, as an older CLI does.
+    await arrangeNextClaudeInvocation(standalone.tmpHome, backgroundScenario('terminal session'));
+
+    await launchFromDrawer(page, standalone.workspaceDir);
+    const card = agentCard(page, 1);
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expectOverlayCount(page, 1);
+    await card.hover();
+    await expect(card.locator('button[title="Close agent"]')).toBeVisible();
+    await expect(card.getByTestId('card-stop-session')).toHaveCount(0);
+  });
 });

@@ -501,7 +501,9 @@ async function playScenario(homeDir, scenario, context) {
 // detached worker that plays the next scenario as the session (transcript,
 // hooks) and prints `backgrounded · <short id>`; `agents --json` lists the
 // workers still alive; `attach <id>` follows the worker's output until it ends
-// (and, like the real one, leaves it running when the terminal closes).
+// (and, like the real one, leaves it running when the terminal closes);
+// `stop <id>` ends the worker and drops it from the list, and for an id it
+// does not know answers as the real one does (stderr, exit 1).
 
 const BACKGROUND_WORKER_FLAG = '--mock-bg-worker';
 const BACKGROUND_POLL_MS = 200;
@@ -623,6 +625,25 @@ function forgetBackground(homeDir, sessionId) {
   );
 }
 
+function stopBackground(homeDir, shortId) {
+  const entry = readBackgroundRegistry(homeDir).find((e) => e.id === shortId);
+  logAction(homeDir, `background stop ${shortId} found=${Boolean(entry)}`);
+  if (!entry || !isAlive(entry.pid)) {
+    process.stderr.write(
+      `No job matching '${shortId}'. Run 'claude agents' to list running sessions.\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  try {
+    process.kill(entry.pid, 'SIGTERM');
+  } catch {
+    // Gone between the check and the kill: stopped all the same.
+  }
+  // A signalled worker runs no exit handler: forget it here.
+  forgetBackground(homeDir, entry.sessionId);
+}
+
 /** Handle the background commands; true when the invocation was one. */
 async function handleBackgroundCommand(homeDir, cwd, args) {
   if (args[0] === 'agents') {
@@ -631,6 +652,10 @@ async function handleBackgroundCommand(homeDir, cwd, args) {
   }
   if (args[0] === 'attach') {
     await attachBackground(homeDir, args[1] || '');
+    return true;
+  }
+  if (args[0] === 'stop') {
+    stopBackground(homeDir, args[1] || '');
     return true;
   }
   if (args.includes('--bg')) {

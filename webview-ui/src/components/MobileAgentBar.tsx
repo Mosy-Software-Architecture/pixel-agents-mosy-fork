@@ -18,6 +18,9 @@ interface MobileAgentBarProps {
   activeAgentId: number | null;
   onSelectAgent: (agentId: number) => void;
   onCloseAgent: (agentId: number) => void;
+  /** Stop an agent's background session (the card's skull); absent where
+   *  this office may not (read-only, VS Code). */
+  onStopSession?: (agentId: number) => void;
   /** Launch into a Directory picked from the + card's drawer, wearing
    *  `palette` when the launch started from the roster. */
   onLaunchDirectory: (directory: Directory, palette?: number) => void;
@@ -60,6 +63,7 @@ export function MobileAgentBar({
   activeAgentId,
   onSelectAgent,
   onCloseAgent,
+  onStopSession,
   onLaunchDirectory,
   directories,
   onAddDirectory,
@@ -197,6 +201,7 @@ export function MobileAgentBar({
           activityFor={activityFor}
           onSelect={onSelectAgent}
           onClose={onCloseAgent}
+          onStopSession={onStopSession}
         />
       </div>
     </div>
