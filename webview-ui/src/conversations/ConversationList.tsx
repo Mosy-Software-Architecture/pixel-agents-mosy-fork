@@ -9,7 +9,6 @@ import type {
 import type { TabStatus } from '../components/AgentCard.js';
 import { CharacterMugShot } from '../components/CharacterMugShot.js';
 import { STATUS_DOT } from '../components/statusDot.js';
-import { Button } from '../components/ui/Button.js';
 import { PixelIcon } from '../components/ui/PixelIcon.js';
 import { PixelText } from '../components/ui/PixelText.js';
 import {
@@ -23,10 +22,9 @@ import {
 import { prefersReducedMotion } from '../hooks/usePresence.js';
 import { useShowDirectoryNames } from '../hooks/useShowDirectoryNames.js';
 import { shownDirectoryName } from '../office/directoryNames.js';
-import { liveElsewhereBadge, liveElsewhereWarning, resumeNeedsConfirm } from './liveElsewhere.js';
+import { goesToAgent, liveElsewhereBadge } from './liveElsewhere.js';
 import { recentSection } from './recent.js';
 import {
-  isService,
   remoteCanOpen,
   remoteHostNote,
   remotePage,
@@ -42,7 +40,8 @@ import { type ConversationLimits, useConversations } from './useConversations.js
 interface ConversationListProps {
   /** Whether it shows: the list is only fetched (and kept fresh) while it does. */
   open: boolean;
-  /** A past conversation pressed: resume it. */
+  /** A past conversation pressed, or one whose agent has no terminal here
+   *  (Headless): resume it. */
   onResume: (sessionId: string, directoryPath: string) => void;
   /** A running one pressed: go to its agent (as its card would). */
   onOpenAgent: (agentId: number) => void;
@@ -73,7 +72,8 @@ export interface ConversationSearchScope {
  * this viewer opens it; remembered per browser). Titled as the coding agent
  * titles them, each with a mug shot of the character its agent wore. One an
  * agent in the office is running shows its status dot, and pressing it goes
- * to that agent; pressing a past one resumes it. Last, each remote host's
+ * to that agent; pressing a past one resumes it, and so does pressing one
+ * whose agent has no terminal here (Headless: it takes the terminal). Last, each remote host's
  * sessions (remote.ts), pressing one opens it, paged like a Directory.
  * With one Directory, Recent stands in for its section (recentSection).
  */
@@ -86,9 +86,10 @@ export function ConversationList({
   roomy = false,
   onSearch,
 }: ConversationListProps) {
-  /** What pressing a row does: a running one opens its agent, a past one resumes. */
+  /** What pressing a row does: one an agent with a terminal runs opens that
+   *  agent; any other resumes here. */
   const press = (conversation: Conversation, directory: DirectoryConversations) => () =>
-    conversation.agentId !== undefined
+    goesToAgent(conversation)
       ? onOpenAgent(conversation.agentId)
       : onResume(conversation.sessionId, directory.path);
   // Conversations per Directory beyond the default five ("Show more"):
@@ -529,8 +530,8 @@ export interface RowProps {
 
 /**
  * One conversation. One still open in a terminal the office did not launch
- * says so under its title; pressing it, when that would resume it, first asks
- * in place (a second process on a running session is rarely meant).
+ * says so under its title (and what it is doing there); pressing it resumes
+ * it here all the same, a second process on the same session.
  */
 export function ConversationRow({
   conversation,
@@ -545,26 +546,23 @@ export function ConversationRow({
   const mark = rowMark(conversation, remoteHost !== undefined, statusFor);
   // Settings → Show Directory Names off: no Directory line (one Directory says nothing).
   const where = shownDirectoryName(directoryName, useShowDirectoryNames());
-  const [confirming, setConfirming] = useState(false);
-  // A service is attached to, never resumed: nothing to confirm, and one
-  // outside tmux can't be opened at all.
-  const service = remoteHost !== undefined && isService(conversation);
-  const needsConfirm = !service && resumeNeedsConfirm(conversation);
+  // A remote service outside tmux can't be opened at all.
   const disabled = remoteHost !== undefined && !remoteCanOpen(conversation);
-  const row = (
+  return (
     <button
       type="button"
       data-testid="conversation-row"
       // aria-disabled, not disabled: the tooltip saying why must still show.
       aria-disabled={disabled || undefined}
-      onClick={disabled ? undefined : needsConfirm ? () => setConfirming((open) => !open) : onPress}
-      aria-expanded={needsConfirm ? confirming : undefined}
+      onClick={disabled ? undefined : onPress}
       title={
         remoteHost !== undefined
           ? remoteRowTitle(conversation, remoteHost)
-          : agentId !== undefined
+          : goesToAgent(conversation)
             ? `Go to "${title}"`
-            : `Resume "${title}"`
+            : agentId !== undefined
+              ? `Open a terminal on "${title}" here`
+              : `Resume "${title}"`
       }
       className={`w-full flex items-center gap-8 px-10 ${roomy ? 'py-8' : where ? 'py-3' : 'py-5'} bg-transparent border-none rounded-none text-left text-text ${disabled ? 'cursor-default' : 'cursor-pointer hover:bg-btn-bg'}`}
     >
@@ -620,44 +618,6 @@ export function ConversationRow({
         testId="conversation-status"
       />
     </button>
-  );
-  if (!needsConfirm || !liveElsewhere) return row;
-  return (
-    <div>
-      {row}
-      {confirming && (
-        <div
-          role="alertdialog"
-          aria-label="Resume a session open elsewhere"
-          data-testid="conversation-resume-confirm"
-          className="mx-10 mb-4 px-8 py-6 bg-bg-dark border-2 border-warning rounded-none"
-        >
-          <p className="m-0 text-xs leading-tight text-text">
-            {liveElsewhereWarning(liveElsewhere)}
-          </p>
-          <div className="flex justify-end gap-6 mt-6">
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="conversation-resume-cancel"
-              onClick={() => setConfirming(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              data-testid="conversation-resume-anyway"
-              onClick={() => {
-                setConfirming(false);
-                onPress();
-              }}
-            >
-              Open anyway
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 

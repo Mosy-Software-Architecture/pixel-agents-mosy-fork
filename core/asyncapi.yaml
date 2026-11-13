@@ -1255,6 +1255,13 @@ components:
         agentId:
           type: integer
           description: The agent in the office running it right now; absent for a past conversation.
+        headless:
+          type: boolean
+          description: >-
+            The agent running it has no terminal in the office (a Headless
+            agent, adopted from a terminal the office did not launch).
+            Pressing the conversation resumes it here (resumeConversation),
+            and that agent takes the new terminal. Absent otherwise.
         liveElsewhere:
           $ref: '#/components/schemas/LiveElsewhere'
         remoteStatus:
@@ -1879,7 +1886,9 @@ components:
       description: >-
         Resume a past conversation in a new terminal: the agent comes back
         wearing the character it wore, in the seat it sat in when that seat is
-        free. Ignored when an agent in the office is already running it.
+        free. Ignored when an agent with a terminal in the office is already
+        running it. A Headless agent running it takes the terminal instead:
+        same agent id, character, seat and card, no second character.
       type: object
       additionalProperties: false
       required: [type, sessionId, directoryPath]

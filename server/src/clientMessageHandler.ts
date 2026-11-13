@@ -312,6 +312,7 @@ export function handleClientMessage(
             sessionId: resume.sessionId,
             transcript: resume.transcript,
             seatId: resume.look?.seatId,
+            agentId: resume.agentId,
           },
         },
       );
@@ -326,6 +327,18 @@ export function handleClientMessage(
       // an agentClosed broadcast.
       const id = msg.id as number;
       const agent = store.get(id);
+      // A terminal on a session another terminal runs too: closing it ends
+      // only the office's process, and its exit leaves the agent Headless
+      // (admitTerminalAgent), as it was before the resume.
+      if (
+        agent &&
+        ctx.ptyManager?.has(id) &&
+        conversationProvider &&
+        liveElsewhere(store, ctx.ptyManager, conversationProvider).has(agent.sessionId)
+      ) {
+        ctx.ptyManager.dispose(id);
+        break;
+      }
       if (agent && runtime) {
         // dispose() is a no-op for agents with no terminal, so this is safe for
         // both shapes. The PTY's onExit handler does the store cleanup for

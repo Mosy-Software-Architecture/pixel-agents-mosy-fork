@@ -12,6 +12,7 @@ import {
 } from '../constants.js';
 import { transport } from '../transport/index.js';
 import { ConversationRow, type ConversationSearchScope } from './ConversationList.js';
+import { goesToAgent } from './liveElsewhere.js';
 import { remoteSearch } from './remote.js';
 
 interface ConversationSearchProps {
@@ -226,7 +227,7 @@ function SearchBody({
               conversation={conversation}
               where={directory ? undefined : directoryName}
               onPress={() => {
-                if (conversation.agentId !== undefined) onOpenAgent(conversation.agentId);
+                if (goesToAgent(conversation)) onOpenAgent(conversation.agentId);
                 else onResume(conversation.sessionId, path);
                 onClose();
               }}
