@@ -299,7 +299,7 @@ This section is auto-generated. Do not edit between the markers; CI fails on dri
 - `e2e/standalone/launch-drawer.spec.ts:437` — the drawer fits the viewport, its rows scroll, and + Directory stays reachable (Standalone / long Directory lists)
 - `e2e/standalone/multi-server-hooks.spec.ts:31` — extension and standalone both stay hook-driven without cross-contamination (Standalone / multi-server hooks)
 - `e2e/standalone/session-marks.spec.ts:83` — a done conversation shows only under See all, with a check, and its check button marks and unmarks (Standalone / done marks)
-- `e2e/standalone/session-marks.spec.ts:138` — a live agent whose session is marked done shows the check on its card, and the card's check takes it off (Standalone / done marks)
+- `e2e/standalone/session-marks.spec.ts:136` — a live agent whose session is marked done shows the check on its card, and the card's check takes it off (Standalone / done marks)
 - `e2e/standalone/terminal.spec.ts:45` — browser-launched agent gets a PTY terminal, hooks route to its character, close cleans up (Standalone / terminal)
 - `e2e/standalone/terminal.spec.ts:101` — every tab takes mouse input, and a narrow window keeps the cards and close reachable (Standalone / terminal)
 - `e2e/standalone/terminal.spec.ts:136` — a card dragged on the desktop moves on an open phone too, and stays after a reload (Standalone / terminal)
