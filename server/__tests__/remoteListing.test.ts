@@ -232,4 +232,46 @@ describe.skipIf(!hasPython())('the listing script', () => {
       fs.rmSync(home, { recursive: true, force: true });
     }
   });
+
+  it("reads the host's done marks in the same call, voided by a later prompt", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-listing-'));
+    const ids = ['00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000a2'];
+    try {
+      const project = path.join(home, '.claude', 'projects', '-r');
+      fs.mkdirSync(project, { recursive: true });
+      const record = (type: string, content: unknown, timestamp: string) =>
+        JSON.stringify({ type, cwd: '/r', entrypoint: 'cli', message: { content }, timestamp });
+      const title = (n: number) => JSON.stringify({ type: 'ai-title', aiTitle: `T${n}` });
+      fs.writeFileSync(
+        path.join(project, `${ids[0]}.jsonl`),
+        [record('user', 'build', '2026-11-12T09:00:00Z'), title(1)].join('\n') + '\n',
+      );
+      fs.writeFileSync(
+        path.join(project, `${ids[1]}.jsonl`),
+        [
+          record('user', 'build', '2026-11-12T09:00:00Z'),
+          title(2),
+          record('user', 'one more thing', '2026-11-12T11:00:00Z'),
+        ].join('\n') + '\n',
+      );
+      fs.writeFileSync(
+        path.join(home, '.claude', 'session-marks.json'),
+        JSON.stringify({
+          version: 1,
+          marks: Object.fromEntries(
+            ids.map((id) => [id, { done: '2026-11-12T10:00:00Z', by: 'cli' }]),
+          ),
+        }),
+      );
+      const out = execFileSync('python3', ['-'], {
+        input: REMOTE_LISTING_SCRIPT,
+        env: { ...process.env, HOME: home },
+      }).toString();
+      const done = new Map(parseRemoteListing(out)!.map((s) => [s.sessionId, s.done]));
+      expect(done.get(ids[0])).toBe(true);
+      expect(done.get(ids[1])).toBeUndefined();
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
 });

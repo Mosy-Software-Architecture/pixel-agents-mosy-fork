@@ -16,7 +16,8 @@ import { transport } from '../transport/index.js';
  *  was written — the desktop sidebar stays open, so nothing else would ask),
  *  a Directory was added, renamed or removed (one section per Directory), or
  *  an agent gained or lost its terminal (a Headless one's row resumes, one
- *  with a terminal goes to it). */
+ *  with a terminal goes to it), or a done mark changed (a done conversation
+ *  leaves the lists, an unmarked one comes back). */
 const REFRESH_ON = new Set([
   'agentCreated',
   'agentClosed',
@@ -25,6 +26,7 @@ const REFRESH_ON = new Set([
   'directoriesLoaded',
   'terminalSessionOpened',
   'terminalSessionClosed',
+  'agentSessionMarks',
 ]);
 
 export interface ConversationList {

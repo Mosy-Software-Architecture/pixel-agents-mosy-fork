@@ -35,12 +35,24 @@ export interface RemoteShown {
 }
 
 /** A host's groups as the sidebar shows them: the first `shown` of each, and
- *  whether more are behind a "Show 5 more". */
+ *  whether more are behind a "Show 5 more". Sessions marked done on the host
+ *  are left out of both (and of the counts): its search lists them
+ *  (remoteSearch); `doneHidden` says how many. */
 export function remotePage(
   host: RemoteHostConversations,
   shown: RemoteShown = {},
-): { work: Conversation[]; services: Conversation[]; moreWork: boolean; moreServices: boolean } {
-  const groups = remoteGroups(host);
+): {
+  work: Conversation[];
+  services: Conversation[];
+  moreWork: boolean;
+  moreServices: boolean;
+  doneHidden: number;
+} {
+  const all = remoteGroups(host);
+  const groups = {
+    work: all.work.filter((c) => !c.done),
+    services: all.services.filter((c) => !c.done),
+  };
   const work = shown.work ?? CONVERSATIONS_PER_DIRECTORY;
   const services = shown.services ?? CONVERSATIONS_PER_DIRECTORY;
   return {
@@ -48,6 +60,7 @@ export function remotePage(
     services: groups.services.slice(0, services),
     moreWork: groups.work.length > work,
     moreServices: groups.services.length > services,
+    doneHidden: host.conversations.length - groups.work.length - groups.services.length,
   };
 }
 
@@ -61,7 +74,7 @@ export function remoteShowMore(shown: RemoteShown, group: keyof RemoteShown): Re
 
 /** A host's rows whose title holds every word of `query` (any case), in the
  *  sidebar's order: the search scoped to a host (the server's titleMatches,
- *  run over the listing the sidebar already holds). */
+ *  run over the listing the sidebar already holds). Done ones included. */
 export function remoteSearch(host: RemoteHostConversations, query: string): Conversation[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const { work, services } = remoteGroups(host);

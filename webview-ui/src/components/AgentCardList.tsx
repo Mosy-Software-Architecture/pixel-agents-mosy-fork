@@ -37,6 +37,9 @@ interface AgentCardListProps {
   /** Stop an agent's background session (the card's skull); absent where
    *  this office may not (read-only, VS Code). */
   onStopSession?: (agentId: number) => void;
+  /** Mark an agent's session done or not (the card's check); absent where
+   *  this office may not (read-only, VS Code). */
+  onMarkDone?: (sessionId: string, done: boolean) => void;
   /** Drawn after the cards, in the same scroller (the desktop terminal's hide ribbon). */
   trailing?: ReactNode;
 }
@@ -64,6 +67,7 @@ export function AgentCardList({
   onSelect,
   onClose,
   onStopSession,
+  onMarkDone,
   trailing,
 }: AgentCardListProps) {
   const reorder = useCardReorder({
@@ -123,6 +127,7 @@ export function AgentCardList({
               onSelect={onSelect}
               onClose={onClose}
               onStopSession={onStopSession}
+              onMarkDone={onMarkDone}
             />
           </div>
         );

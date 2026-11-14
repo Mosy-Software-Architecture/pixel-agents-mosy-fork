@@ -56,6 +56,7 @@ export type ServerMessage =
   | TerminalSessionClosed
   | AgentBackgroundSessions
   | AgentSessionStopFailed
+  | AgentSessionMarks
   | AgentDiagnostics;
 
 export type ClientMessage =
@@ -96,6 +97,7 @@ export type ClientMessage =
   | SearchConversations
   | ResumeConversation
   | OpenRemoteConversation
+  | SetSessionDone
   | RequestDiagnostics;
 
 export interface ProviderCapabilities {
@@ -518,6 +520,7 @@ export interface DirectoryConversations {
   path: string;
   conversations: Conversation[];
   more?: boolean;
+  doneHidden?: number;
 }
 
 export interface Conversation {
@@ -532,6 +535,7 @@ export interface Conversation {
   liveElsewhere?: LiveElsewhere;
   remoteStatus?: string;
   remoteKind?: RemoteKind;
+  done?: boolean;
 }
 
 export interface LiveElsewhere {
@@ -591,6 +595,17 @@ export interface AgentSessionStopFailed {
   type: 'agentSessionStopFailed';
   id: number;
   reason: string;
+}
+
+export interface AgentSessionMarks {
+  type: 'agentSessionMarks';
+  agents: Record<string, AgentSessionMark>;
+}
+
+export interface AgentSessionMark {
+  sessionId: string;
+  done?: boolean;
+  remote?: boolean;
 }
 
 export interface AgentDiagnostics {
@@ -804,6 +819,12 @@ export interface OpenRemoteConversation {
   type: 'openRemoteConversation';
   host: string;
   sessionId: string;
+}
+
+export interface SetSessionDone {
+  type: 'setSessionDone';
+  sessionId: string;
+  done: boolean;
 }
 
 export interface RequestDiagnostics {

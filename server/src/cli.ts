@@ -43,6 +43,7 @@ import {
   hookProviders,
 } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
+import { watchSessionMarks } from './sessionMarks.js';
 import {
   defaultPtyHostSocket,
   ptyHostLogFile,
@@ -353,6 +354,9 @@ async function main(): Promise<void> {
     // Which agents' sessions run in the background (their cards can stop
     // one): broadcast to every office as it changes.
     const stopBackgroundWatch = watchBackgroundSessionAgents(store, claudeProvider);
+    // Which agents' sessions are marked done (their cards' check), and every
+    // change to the marks file: broadcast to every office.
+    const stopMarksWatch = watchSessionMarks(store, claudeProvider);
 
     // Wire hook events: HTTP POST -> runtime -> hookEventHandler -> agents
     server.onHookEvent((providerId, event) => {
@@ -545,6 +549,7 @@ async function main(): Promise<void> {
       characterProfilesWatcher.dispose();
       stopUsagePolling();
       stopBackgroundWatch();
+      stopMarksWatch();
       // With the PTY host, stop, not dispose: the saved list keeps whoever is
       // still running, for the next server to reattach. In process every
       // terminal is gone, and the next server starts with no agents but the

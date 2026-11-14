@@ -11,3 +11,7 @@ import * as path from 'path';
 const isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-test-home-'));
 process.env.HOME = isolatedHome;
 process.env.USERPROFILE = isolatedHome;
+// Claude Code's config directory follows $CLAUDE_CONFIG_DIR before $HOME: a
+// value inherited from the shell would point the Claude provider (registry,
+// done marks) at the developer's real one.
+delete process.env.CLAUDE_CONFIG_DIR;

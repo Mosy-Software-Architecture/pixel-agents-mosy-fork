@@ -131,6 +131,12 @@ export function remoteSessionOf(
   return host && session ? { host, session } : undefined;
 }
 
+/** Whether a host's last listing says its session is marked done (its own
+ *  session-marks.json, read with the listing). */
+export function remoteSessionDone(hostName: string, sessionId: string): boolean {
+  return listings.get(hostName)?.sessions.some((s) => s.sessionId === sessionId && s.done) ?? false;
+}
+
 /** The agent in the office running a host's session, if any. */
 export function remoteAgentOf(
   store: AgentStateStore,
@@ -162,6 +168,7 @@ function remoteConversation(
     agentId,
     remoteKind: session.service ? 'service' : 'work',
     ...(session.live ? { remoteStatus: session.live.status ?? 'running' } : {}),
+    ...(session.done ? { done: true } : {}),
     // Running outside tmux: there is nothing to attach to, and opening it
     // resumes it, a second process on the session (the row asks first). A
     // service's row is not pressable then (remoteCanOpen).

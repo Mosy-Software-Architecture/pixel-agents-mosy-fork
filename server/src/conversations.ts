@@ -355,6 +355,7 @@ function conversationOf(
   live: ReadonlyMap<string, LiveSession>,
   looks: Looks,
   elsewhere: ReadonlyMap<string, LiveElsewhere>,
+  done: ReadonlyMap<string, number>,
 ): Conversation | null {
   const sessionId = path.basename(file.path, transcriptSuffix(provider.sessionFilePattern));
   const running = live.get(sessionId);
@@ -372,6 +373,7 @@ function conversationOf(
     agentId: running?.agentId,
     ...(running?.headless ? { headless: true } : {}),
     liveElsewhere: elsewhere.get(sessionId),
+    ...(done.has(sessionId) ? { done: true } : {}),
   };
 }
 
@@ -401,7 +403,9 @@ function clampLimit(count: number): number {
  * of them all told; `more` says older ones exist. A past one without a title
  * (a session that never got a prompt) is left out. One running in a terminal
  * the office did not launch carries `liveElsewhere` (sessionsLiveElsewhere),
- * one whose agent has no terminal here `headless`.
+ * one whose agent has no terminal here `headless`. One whose session is
+ * marked done (`done`, HookProvider.sessionMarks) is left out, counted in
+ * `doneHidden` and in neither the cap nor `more`: the search still finds it.
  */
 export function listConversations(
   directories: readonly Directory[],
@@ -409,21 +413,28 @@ export function listConversations(
   live: ReadonlyMap<string, LiveSession>,
   limits: ReadonlyMap<string, number> = new Map(),
   elsewhere: ReadonlyMap<string, LiveElsewhere> = new Map(),
+  done: ReadonlyMap<string, number> = new Map(),
 ): DirectoryConversations[] {
   const looks = readLooks();
   const found = new Set<string>();
+  const suffix = transcriptSuffix(provider.sessionFilePattern);
   const listed = directories.map((directory): DirectoryConversations => {
     const limit = limits.get(directory.path) ?? CONVERSATIONS_PER_DIRECTORY;
     const conversations: Conversation[] = [];
     let more = false;
+    let doneHidden = 0;
     for (const file of directoryTranscripts(directory, provider)) {
       found.add(file.path);
-      // Past the cap, titles are read only until one says there are more.
-      if (conversations.length >= limit) {
-        if (!more) more = conversationOf(file, provider, live, looks, elsewhere) !== null;
+      if (done.has(path.basename(file.path, suffix))) {
+        if (conversationOf(file, provider, live, looks, elsewhere, done)) doneHidden++;
         continue;
       }
-      const conversation = conversationOf(file, provider, live, looks, elsewhere);
+      // Past the cap, titles are read only until one says there are more.
+      if (conversations.length >= limit) {
+        if (!more) more = conversationOf(file, provider, live, looks, elsewhere, done) !== null;
+        continue;
+      }
+      const conversation = conversationOf(file, provider, live, looks, elsewhere, done);
       if (conversation) conversations.push(conversation);
     }
     return {
@@ -431,6 +442,7 @@ export function listConversations(
       path: directory.path,
       conversations,
       ...(more ? { more } : {}),
+      ...(doneHidden > 0 ? { doneHidden } : {}),
     };
   });
   for (const cached of titleCache.keys()) if (!found.has(cached)) titleCache.delete(cached);
@@ -475,6 +487,7 @@ export function titleMatches(title: string, query: string): boolean {
  * The conversations whose title matches `query` (titleMatches), across every
  * Directory or the one asked for, newest first, at most `limit`; `more`: at
  * least one more matches. A session listed under two Directories counts once.
+ * Done ones are found too, with `done` (the sidebar's lists leave them out).
  */
 export function searchConversations(
   directories: readonly Directory[],
@@ -482,6 +495,7 @@ export function searchConversations(
   live: ReadonlyMap<string, LiveSession>,
   { query, directoryPath, limit }: ConversationQuery,
   elsewhere: ReadonlyMap<string, LiveElsewhere> = new Map(),
+  done: ReadonlyMap<string, number> = new Map(),
 ): { results: FoundConversation[]; more: boolean } {
   const looks = readLooks();
   const files = directories
@@ -493,7 +507,7 @@ export function searchConversations(
   const results: FoundConversation[] = [];
   const sessions = new Set<string>();
   for (const { file, directory } of files) {
-    const conversation = conversationOf(file, provider, live, looks, elsewhere);
+    const conversation = conversationOf(file, provider, live, looks, elsewhere, done);
     if (!conversation || sessions.has(conversation.sessionId)) continue;
     if (!titleMatches(conversation.title, query)) continue;
     if (results.length === limit) return { results, more: true };

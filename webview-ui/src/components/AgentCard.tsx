@@ -24,9 +24,10 @@ import {
   sessionName,
   subscribeAgentSessionInfo,
 } from '../office/sessionLabel.js';
+import { sessionMarkOf, subscribeSessionMarks } from '../office/sessionMarks.js';
 import { AgentCardLabel } from './AgentCardLabel.js';
 import type { CardVariant, CloseMode, StopPhase } from './cardBar.js';
-import { cardTitleLines, stopMode, stopTitle } from './cardBar.js';
+import { cardTitleLines, markMode, markTitle, stopMode, stopTitle } from './cardBar.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { STATUS_DOT } from './statusDot.js';
 import { Button } from './ui/Button.js';
@@ -90,6 +91,10 @@ interface AgentCardProps {
    *  arms it). Absent where this office may not (read-only, VS Code); the
    *  skull shows only on an agent whose session runs in the background. */
   onStopSession?: (agentId: number) => void;
+  /** Mark the agent's session done, or take the mark off (the check over the
+   *  mug shot's bottom-left corner). Absent where this office may not
+   *  (read-only, VS Code); the check still shows a done session. */
+  onMarkDone?: (sessionId: string, done: boolean) => void;
 }
 
 /** One agent's card in the terminal sidebar — on the desktop column its
@@ -107,6 +112,7 @@ export function AgentCard({
   onSelect,
   onClose,
   onStopSession,
+  onMarkDone,
 }: AgentCardProps) {
   const contextUsed = useAgentContextUsed(agentId);
   const session = useSyncExternalStore(subscribeAgentSessionInfo, () => agentSessionInfo(agentId));
@@ -123,6 +129,10 @@ export function AgentCard({
     canStop: onStopSession !== undefined,
     phase: stopState?.phase,
   });
+  // Its session's done mark (office/sessionMarks.ts): the check.
+  const mark = useSyncExternalStore(subscribeSessionMarks, () => sessionMarkOf(agentId));
+  const done = mark?.done === true;
+  const check = markMode(close, { mark, canMark: onMarkDone !== undefined, showLabel });
   return (
     <div
       className={`group relative pointer-events-auto flex items-stretch gap-1 p-1 cursor-pointer border-2 shrink-0 ${CARD_VARIANT[variant]}`}
@@ -140,6 +150,7 @@ export function AgentCard({
           host={remoteHostLabel(session)}
           activity={activity}
           width={AGENT_CARD_LABEL_WIDTH_PX}
+          done={done ? <PixelIcon name="check" scale={1} /> : undefined}
         />
       )}
       <span className="relative flex shrink-0">
@@ -179,6 +190,38 @@ export function AgentCard({
             <span className={`flex ${stopState?.phase === 'armed' ? 'pending-ack-pulse' : ''}`}>
               <PixelIcon name="skull" />
             </span>
+          </Button>
+        )}
+        {/* The done check, over the mug shot's bottom-left corner, above the
+            context bar: green when done, grey (green on hover) when not. */}
+        {check === 'badge' && (
+          <span
+            className="absolute left-0 z-20 flex p-1 bg-bg-dark text-status-success pointer-events-none"
+            style={{ bottom: CARD_CONTEXT_BAR_HEIGHT_PX }}
+            data-testid="card-done-badge"
+            aria-label="Done"
+          >
+            <PixelIcon name="check" scale={1} />
+          </span>
+        )}
+        {check !== null && check !== 'badge' && mark && onMarkDone && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMarkDone(mark.sessionId, !done);
+            }}
+            title={markTitle(done)}
+            aria-label={markTitle(done)}
+            aria-pressed={done}
+            data-testid="card-mark-done"
+            data-done={done || undefined}
+            className={`absolute left-0 z-20 bg-bg-dark! ${done ? 'text-status-success! hover:text-text-muted!' : 'text-text-muted! hover:text-status-success!'} ${CLOSE_MODE[check]}`}
+            style={{ bottom: CARD_CONTEXT_BAR_HEIGHT_PX }}
+          >
+            {/* Small: on the phone a done one stays over the mug shot. */}
+            <PixelIcon name="check" scale={1} />
           </Button>
         )}
       </span>

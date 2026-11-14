@@ -6,6 +6,7 @@ import {
   REMOTE_SERVICE_NAME_PREFIX,
 } from './constants.js';
 import { labelFromChunk } from './conversationTitle.js';
+import { markTime, promptAfterIn } from './sessionMarks.js';
 
 /**
  * Claude Code sessions on another machine, read over ssh (remoteHosts.ts runs
@@ -22,6 +23,11 @@ import { labelFromChunk } from './conversationTitle.js';
  * for its first message) is sent with the path the CLI will write it to.
  * parseRemoteListing turns that into the sessions the sidebar lists, telling
  * services (a name starting with REMOTE_SERVICE_NAME_PREFIX) from work.
+ * The host's done marks (~/.claude/session-marks.json) come in the same
+ * answer: a marked transcript carries its mark's `done` and the user records
+ * of its tail, from which the mark's expiry (a user prompt after it) is told
+ * here with the local rule (sessionMarks.ts). Only the tail is looked at, so
+ * a prompt more than CONVERSATION_TITLE_SCAN_BYTES from the end is missed.
  */
 
 /** A Claude Code session on a remote host, as the sidebar lists it. */
@@ -47,6 +53,8 @@ export interface RemoteSession {
   /** A service (`claude --name svc-<service>`): opening it attaches to its
    *  tmux and never resumes it. Only running services are listed. */
   service?: true;
+  /** Marked done on its host, and no user prompt in its tail after the mark. */
+  done?: true;
 }
 
 /** The records whose newest copy the script keeps (conversationTitle's). */
@@ -78,6 +86,15 @@ for f in glob.glob(os.path.join(HOME, 'sessions', '*.json')):
     except Exception:
         pass
 live_ids = set(s.get('sessionId') for s in live)
+
+marks = {}
+try:
+    with open(os.path.join(HOME, 'session-marks.json')) as fh:
+        m = json.load(fh).get('marks')
+    if isinstance(m, dict):
+        marks = {k: v['done'] for k, v in m.items() if isinstance(v, dict) and isinstance(v.get('done'), str)}
+except Exception:
+    pass
 
 def string_field(key, chunk, index):
     found = re.findall('"' + key + r'":("(?:[^"\\]|\\.)*")', chunk)
@@ -117,7 +134,7 @@ for p in glob.glob(os.path.join(HOME, 'projects', '*', '*.jsonl')):
     labels = {}
     scan(head, labels)
     scan(tail, labels)
-    transcripts.append({
+    t = {
         'sessionId': sid,
         'path': p,
         'mtime': st.st_mtime * 1000,
@@ -126,7 +143,12 @@ for p in glob.glob(os.path.join(HOME, 'projects', '*', '*.jsonl')):
         'cwd': string_field('cwd', head or tail, 0),
         'entrypoint': entrypoint,
         'labels': list(labels.values()),
-    })
+    }
+    if sid in marks:
+        # Marked done: the tail's user records tell whether a prompt voided it.
+        t['done'] = marks[sid]
+        t['userLines'] = [l for l in tail.split('\n') if '"type":"user"' in l and '"tool_result"' not in l]
+    transcripts.append(t)
 
 # Running, nothing written yet: where the CLI will write it (the project
 # directory is the cwd with every other character than a letter or digit as -).
@@ -174,6 +196,15 @@ function tmuxSessionOf(
   return name && listed.has(name) ? name : undefined;
 }
 
+/** Whether a remote mark (its `done`) still holds: no user prompt after it
+ *  among the tail's user records the script sent. */
+function markHolds(done: unknown, userLines: unknown): boolean {
+  if (typeof done !== 'string') return false;
+  const at = markTime({ done });
+  if (at === undefined) return false;
+  return promptAfterIn(strings(userLines).reverse(), at) !== true;
+}
+
 /**
  * The sessions the script's output lists, newest first, or null when it is
  * not the script's output. A service is one whose registry name (else, when
@@ -212,6 +243,7 @@ export function parseRemoteListing(text: string): RemoteSession[] | null {
     if (!title || !cwd) continue;
     const service = (name ?? title).startsWith(REMOTE_SERVICE_NAME_PREFIX);
     if (service && !running) continue;
+    const done = markHolds(t.done, t.userLines);
     sessions.push({
       sessionId,
       transcript,
@@ -230,6 +262,7 @@ export function parseRemoteListing(text: string): RemoteSession[] | null {
         : {}),
       ...(tmux ? { tmux } : {}),
       ...(service ? { service: true as const } : {}),
+      ...(done ? { done: true as const } : {}),
     });
   }
   return sessions.sort((a, b) => b.updatedAt - a.updatedAt);

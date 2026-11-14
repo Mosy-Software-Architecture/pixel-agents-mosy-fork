@@ -1,8 +1,13 @@
+import type { ReactNode } from 'react';
+
 /**
  * The two lines left of an agent card's mug shot on the desktop column: the
  * session's name in its /color (and where a remote one runs), then what the
  * agent is doing (office/activityText.ts). One line each, cut with an
- * ellipsis; the width is the card row's (AGENT_CARD_LABEL_WIDTH_PX).
+ * ellipsis; the width is the card row's (AGENT_CARD_LABEL_WIDTH_PX). A
+ * session marked done gets a green check before its name (`done`, drawn by
+ * the card: this file stays free of the DOM-measuring icon code, for the
+ * Node-run tests).
  */
 export function AgentCardLabel({
   name,
@@ -10,6 +15,7 @@ export function AgentCardLabel({
   host,
   activity,
   width,
+  done,
 }: {
   /** The session's name (office/sessionLabel.ts `sessionName`). */
   name: string;
@@ -19,6 +25,8 @@ export function AgentCardLabel({
   host?: string;
   activity: string;
   width: number;
+  /** The check of a session marked done (office/sessionMarks.ts), if it is. */
+  done?: ReactNode;
 }) {
   return (
     <span
@@ -27,6 +35,15 @@ export function AgentCardLabel({
       data-testid="agent-card-label"
     >
       <span className="flex items-baseline gap-4 min-w-0">
+        {done && (
+          <span
+            className="shrink-0 flex self-center text-status-success"
+            data-testid="agent-card-done"
+            aria-label="Done"
+          >
+            {done}
+          </span>
+        )}
         <span
           className="overflow-hidden text-ellipsis min-w-0 text-xs"
           style={{ color }}

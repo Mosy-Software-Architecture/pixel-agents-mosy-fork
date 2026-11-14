@@ -167,3 +167,38 @@ export const CLAUDE_KEYCHAIN_SERVICE = 'Claude Code-credentials';
 export const CLAUDE_CREDENTIALS_FILE_NAME = '.credentials.json';
 /** How long reading the keychain may take. */
 export const CLAUDE_KEYCHAIN_TIMEOUT_MS = 5_000;
+
+// ── Done marks (session-marks.json) ────────────────────────────
+/** The done marks, under the config directory: `{ version: 1, marks: {
+ *  <sessionId>: { done: <ISO-8601>, by: feature-flow | office | cli } } }`.
+ *  Written by the office, feature-flow and the `agent` CLI alike. */
+export const SESSION_MARKS_FILE_NAME = 'session-marks.json';
+/** The format this office reads and writes; it never rewrites a newer one. */
+export const SESSION_MARKS_VERSION = 1;
+/** Who wrote a mark, for the marks the office writes. */
+export const SESSION_MARKS_BY_OFFICE = 'office';
+/** Where Claude Code files transcripts under its config directory
+ *  (`projects/<project>/<sessionId>.jsonl`). */
+export const CLAUDE_PROJECTS_DIR_NAME = 'projects';
+/** A marked session's transcript is read backwards from its end looking for a
+ *  user prompt after the mark, at most this far (past it the mark holds). */
+export const SESSION_MARK_SCAN_MAX_BYTES = 8 * 1024 * 1024;
+/** How old the session id → transcript index may get before a session it
+ *  doesn't know makes it read the projects directory again. */
+export const SESSION_MARKS_INDEX_MAX_AGE_MS = 5_000;
+/** User text that voids no done mark: local commands and their output, and
+ *  what Claude Code feeds the model on its own. The same list as the
+ *  toolkit's session-marks.py, so both sides agree on which marks hold
+ *  (`<bash-input>`, the user typing `!cmd`, IS a prompt there). */
+export const NOT_A_PROMPT_PREFIXES: readonly string[] = [
+  '<command-name>',
+  '<command-message>',
+  '<local-command-',
+  '<bash-stdout>',
+  '<bash-stderr>',
+  '<task-notification>',
+  '<system-reminder>',
+];
+/** A user record's `origin.kind` for text Claude Code writes as the user's
+ *  but nobody typed: a background task's notice, a peer session's message. */
+export const NOT_A_PROMPT_ORIGINS: readonly string[] = ['task-notification', 'peer'];

@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -16,17 +17,31 @@ const ownWriteMarks = new Map<string, Set<() => void>>();
  * `reportToWatchers` is set: a write made for a client other than the watcher's (a `/ws`
  * client of the VS Code server) must still reach the watcher, the way another process's
  * would. Throws when the write fails, and then marks nothing (a mark with no write behind it
- * would swallow the next real external change).
+ * would swallow the next real external change). `uniqueTmp`: the temp file gets a name of its
+ * own (pid + random), for a file other programs write too, whose temp names we don't know;
+ * `trailingNewline` ends the file with one, as those programs may.
  */
 export function writeJsonAtomic(
   filePath: string,
   value: unknown,
-  { reportToWatchers = false }: { reportToWatchers?: boolean } = {},
+  {
+    reportToWatchers = false,
+    uniqueTmp = false,
+    trailingNewline = false,
+  }: { reportToWatchers?: boolean; uniqueTmp?: boolean; trailingNewline?: boolean } = {},
 ): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpPath = filePath + '.tmp';
-  fs.writeFileSync(tmpPath, JSON.stringify(value, null, 2), 'utf-8');
-  fs.renameSync(tmpPath, filePath);
+  const tmpPath = uniqueTmp
+    ? `${filePath}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
+    : filePath + '.tmp';
+  try {
+    const text = JSON.stringify(value, null, 2) + (trailingNewline ? '\n' : '');
+    fs.writeFileSync(tmpPath, text, 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+  } catch (err) {
+    if (uniqueTmp) fs.rmSync(tmpPath, { force: true });
+    throw err;
+  }
   if (reportToWatchers) return;
   for (const mark of ownWriteMarks.get(filePath) ?? []) mark();
 }
