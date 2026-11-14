@@ -506,6 +506,8 @@ async function playScenario(homeDir, scenario, context) {
 // does not know answers as the real one does (stderr, exit 1).
 
 const BACKGROUND_WORKER_FLAG = '--mock-bg-worker';
+const ENTER_ALT_SCREEN = '\x1b[?1049h';
+const LEAVE_ALT_SCREEN = '\x1b[?1049l';
 const BACKGROUND_POLL_MS = 200;
 
 function backgroundEnabled(homeDir) {
@@ -595,7 +597,18 @@ async function attachBackground(homeDir, shortId) {
     process.exitCode = 1;
     return;
   }
+  // The real attach draws the session on the alternate screen (Claude Code's
+  // fullscreen renderer) and, under CLAUDE_CODE_DISABLE_MOUSE=1, never turns
+  // mouse tracking on, yet scrolls by the wheel reports it is sent. Enter it
+  // the same way and print what arrives, so a test can see the reports.
+  process.stdout.write(ENTER_ALT_SCREEN);
   process.stdout.write(`mock claude attached to background session ${shortId}\n`);
+  const echoInput = (chunk) => {
+    const shown = String(chunk).replace(/\x1b/g, 'ESC');
+    process.stdout.write(`mock attach received: ${shown}\r\n`);
+  };
+  if (process.stdin.isTTY) process.stdin.setRawMode(true);
+  process.stdin.on('data', echoInput);
   // Follow the worker's output, as the real attach shows the session's screen.
   const outPath = backgroundOutputPath(homeDir, shortId);
   let offset = 0;
@@ -615,6 +628,9 @@ async function attachBackground(homeDir, shortId) {
     await sleep(BACKGROUND_POLL_MS);
   }
   pump();
+  process.stdin.off('data', echoInput);
+  process.stdin.pause();
+  process.stdout.write(LEAVE_ALT_SCREEN);
   process.stdout.write(`background session ${shortId} ended\n`);
 }
 

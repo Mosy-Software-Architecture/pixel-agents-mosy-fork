@@ -166,6 +166,9 @@ interface ExtensionMessageState {
   terminalUnavailableReason: string | null;
   /** Agent ids with a live server-side PTY, in the order they opened. */
   terminalAgentIds: number[];
+  /** The terminals whose program scrolls by wheel reports it never asks for
+   *  (`terminalSessionOpened.wheelReports`, terminal/wheelReports.ts). */
+  wheelReportAgentIds: ReadonlySet<number>;
   /** The agents that get a card, in the card order every client shares:
    *  `agents` minus Teammates, the server's order first, newer agents after. */
   cardAgents: number[];
@@ -240,6 +243,7 @@ export function useExtensionMessages(
   const [terminalUnavailableReason, setTerminalUnavailableReason] = useState<string | null>(null);
   /** Agent ids with a live PTY, in the order their terminals opened. */
   const [terminalAgentIds, setTerminalAgentIds] = useState<number[]>([]);
+  const [wheelReportAgentIds, setWheelReportAgentIds] = useState<ReadonlySet<number>>(new Set());
   /** Agents that are Teammates (they have a Lead). They get no card. */
   const [teammateIds, setTeammateIds] = useState<ReadonlySet<number>>(new Set());
   const markTeammate = (id: number) =>
@@ -388,6 +392,16 @@ export function useExtensionMessages(
         // client rebuilds its tabs, and that can race a live agentCreated.
         const agentId = msg.agentId as number;
         setTerminalAgentIds((prev) => (prev.includes(agentId) ? prev : [...prev, agentId]));
+        // Each announcement says it anew: the same agent can take another
+        // terminal (a Headless agent resumed or attached to).
+        const wheelReports = msg.wheelReports === true;
+        setWheelReportAgentIds((prev) => {
+          if (prev.has(agentId) === wheelReports) return prev;
+          const next = new Set(prev);
+          if (wheelReports) next.add(agentId);
+          else next.delete(agentId);
+          return next;
+        });
         return;
       }
 
@@ -1023,5 +1037,6 @@ export function useExtensionMessages(
     terminalAvailable,
     terminalUnavailableReason,
     terminalAgentIds,
+    wheelReportAgentIds,
   };
 }

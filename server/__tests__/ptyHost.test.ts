@@ -323,7 +323,11 @@ describe('PTY host', () => {
       expect(agent?.isExternal).toBe(false);
       expect(agent?.fileOffset).toBe(fs.statSync(launched!.jsonlFile).size);
       expect(after.store.nextAgentId.current).toBe(2);
-      expect(after.broadcasts).toContainEqual({ type: 'terminalSessionOpened', agentId: 1 });
+      expect(after.broadcasts).toContainEqual({
+        type: 'terminalSessionOpened',
+        agentId: 1,
+        wheelReports: true,
+      });
       expect(after.runtime.knownJsonlFiles.has(launched!.jsonlFile)).toBe(true);
 
       // Its process ending still closes it in the new office.

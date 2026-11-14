@@ -8,6 +8,8 @@ import { TerminalPaneStack } from './TerminalPaneStack.js';
 interface MobileTerminalPageProps {
   /** Agent ids with a live PTY, in open order. */
   agentIds: number[];
+  /** The terminals whose program scrolls by wheel reports (TerminalPane). */
+  wheelReportAgentIds: ReadonlySet<number>;
   /** The pane to show (useTerminalDrawer's resolution). */
   shownAgentId: number | null;
   onStatusChange: (agentId: number, status: TerminalConnectionStatus | null) => void;
@@ -29,6 +31,7 @@ interface MobileTerminalPageProps {
  */
 export function MobileTerminalPage({
   agentIds,
+  wheelReportAgentIds,
   shownAgentId,
   onStatusChange,
   inputRef,
@@ -43,6 +46,7 @@ export function MobileTerminalPage({
       )}
       <TerminalPaneStack
         agentIds={agentIds}
+        wheelReportAgentIds={wheelReportAgentIds}
         shownAgentId={shownAgentId}
         onStatusChange={onStatusChange}
         paneClassName="left-4 right-4 bottom-4 mobile-safe-pane-top"

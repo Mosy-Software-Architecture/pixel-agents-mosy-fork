@@ -1413,6 +1413,16 @@ components:
           const: terminalSessionOpened
         agentId:
           type: integer
+        wheelReports:
+          type: boolean
+          description: >-
+            The program in this terminal scrolls its alternate screen by SGR
+            mouse wheel reports even while it has not turned mouse tracking on
+            (Claude Code's fullscreen renderer with CLAUDE_CODE_DISABLE_MOUSE=1,
+            launched, resumed or attached by the office). The client then turns
+            the wheel into such reports while the alternate screen is up and
+            tracking is off. Absent means false (a remote host's ssh terminal):
+            the wheel stays xterm's.
 
     TerminalSessionClosed:
       description: The agent's terminal process exited; its socket is no longer attachable.

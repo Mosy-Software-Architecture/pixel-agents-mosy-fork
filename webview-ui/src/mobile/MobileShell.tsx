@@ -28,6 +28,8 @@ interface MobileShellProps {
   /** Every top-level office agent, for the card bar. */
   agentIds: number[];
   terminalAgentIds: number[];
+  /** The terminals whose program scrolls by wheel reports (TerminalPane). */
+  wheelReportAgentIds: ReadonlySet<number>;
   focusedAgentId: number | null;
   terminalAvailable: boolean;
   terminalUnavailableReason: string | null;
@@ -69,6 +71,7 @@ export function MobileShell({
   drawer,
   agentIds,
   terminalAgentIds,
+  wheelReportAgentIds,
   focusedAgentId,
   terminalAvailable,
   terminalUnavailableReason,
@@ -126,6 +129,7 @@ export function MobileShell({
           <div className="w-1/2 h-full">
             <MobileTerminalPage
               agentIds={terminalAgentIds}
+              wheelReportAgentIds={wheelReportAgentIds}
               shownAgentId={drawer.shownAgentId}
               onStatusChange={drawer.onStatusChange}
               inputRef={inputRef}

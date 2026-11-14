@@ -578,6 +578,7 @@ export interface TerminalAvailability {
 export interface TerminalSessionOpened {
   type: 'terminalSessionOpened';
   agentId: number;
+  wheelReports?: boolean;
 }
 
 export interface TerminalSessionClosed {

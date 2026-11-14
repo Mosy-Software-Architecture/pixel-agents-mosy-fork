@@ -574,6 +574,20 @@ export const TERMINAL_FLICK_MIN_VELOCITY_PX_PER_MS = 0.05;
  *  move's sample (the running value keeps the rest). The release velocity
  *  comes from the last move event, which is noisy on its own. */
 export const TERMINAL_FLICK_VELOCITY_SMOOTHING = 0.8;
+/** A pixel-delta wheel (a trackpad, Chrome's ~100 px mouse notch) on a
+ *  terminal whose program scrolls by wheel reports (terminal/wheelReports.ts)
+ *  sends one report, one line, per this many rows of delta: half of what
+ *  xterm's own scrollback scrolls, about 3 lines for a mouse notch. */
+export const TERMINAL_WHEEL_ROWS_PER_REPORT = 2;
+/** Wheel reports go out in bursts of at most this many, at least
+ *  TERMINAL_WHEEL_FLUSH_MS apart: Claude Code accelerates reports closer than
+ *  ~35 ms (20 in a row scroll 60 lines), and keeps bursts of 3 at 50 ms to a
+ *  line each (measured on 2.1.325). */
+export const TERMINAL_WHEEL_REPORTS_PER_FLUSH = 3;
+export const TERMINAL_WHEEL_FLUSH_MS = 50;
+/** Reports waiting for their burst; the wheel's excess past it is dropped, so
+ *  scrolling stops within about two bursts of the hand stopping. */
+export const TERMINAL_WHEEL_MAX_PENDING_REPORTS = 6;
 /** xterm's cell-grid element: hit-testing, row height and the selection
  *  chrome all measure THIS rect (not the host, which keeps up to a row of
  *  slack below the grid after fit). */

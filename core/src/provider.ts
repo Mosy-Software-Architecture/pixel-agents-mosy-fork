@@ -302,6 +302,11 @@ export interface HookProvider {
     command: string;
     args: string[];
     env?: Record<string, string>;
+    /** The program scrolls its alternate screen by SGR mouse wheel reports
+     *  even while it has not turned mouse tracking on (Claude Code's
+     *  fullscreen renderer under CLAUDE_CODE_DISABLE_MOUSE=1), so the office's
+     *  terminal sends them for the wheel there (`terminalSessionOpened.wheelReports`). */
+    wheelReports?: boolean;
   };
   /** True for an environment variable a running session of this CLI exports to
    *  the processes under it as a marker of THAT session (its id, its socket, a

@@ -1003,6 +1003,18 @@ describe('clientMessageHandler: standalone terminal control plane', () => {
     expect(types.indexOf('terminalSessionOpened')).toBeGreaterThan(types.indexOf('existingAgents'));
   });
 
+  it('webviewReady re-announces whether a terminal scrolls by wheel reports', () => {
+    const { manager } = workingPtyManager();
+    store.set(1, { ...makeAgent(1), wheelReports: true });
+    manager.create({ agentId: 1, command: 'claude', args: [], cwd: tempHome, env: {} });
+
+    dispatch({ type: 'webviewReady' }, ctx({ ptyManager: manager }));
+
+    expect(sent.filter((m) => m.type === 'terminalSessionOpened')).toEqual([
+      { type: 'terminalSessionOpened', agentId: 1, wheelReports: true },
+    ]);
+  });
+
   // ── launchAgent ──────────────────────────────────────────────
 
   it('launchAgent spawns a PTY-backed agent and announces its terminal', () => {
@@ -1013,7 +1025,11 @@ describe('clientMessageHandler: standalone terminal control plane', () => {
     expect(store.size).toBe(1);
     const id = [...store][0][0];
     expect(manager.has(id)).toBe(true);
-    expect(broadcasts).toContainEqual({ type: 'terminalSessionOpened', agentId: id });
+    expect(broadcasts).toContainEqual({
+      type: 'terminalSessionOpened',
+      agentId: id,
+      wheelReports: true,
+    });
   });
 
   it('launchAgent with a roster pick moves it to the front of the roster', () => {

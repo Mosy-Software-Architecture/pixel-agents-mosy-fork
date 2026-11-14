@@ -159,16 +159,26 @@ function buildLaunchCommand(
   sessionId: string,
   cwd: string,
   opts?: { bypassPermissions?: boolean; resume?: boolean; attach?: string },
-): { command: string; args: string[]; env?: Record<string, string> } {
+): { command: string; args: string[]; env?: Record<string, string>; wheelReports: true } {
+  // Every way of running Claude Code reads SGR wheel reports on its fullscreen
+  // (alternate) screen, even with mouse tracking off (CLAUDE_CODE_DISABLE_MOUSE=1,
+  // set to keep the terminal's own text selection): checked on 2.1.325, both
+  // `claude attach` and an interactive session scroll their transcript a line
+  // per report.
   // A background session is opened where it runs: `claude attach` is a client
   // of the background service, so the session outlives this terminal (Ctrl+Z
   // or closing it only detaches). Its permission mode was set when it started.
   if (opts?.attach)
-    return { command: CLAUDE_COMMAND, args: ['attach', opts.attach], env: { PWD: cwd } };
+    return {
+      command: CLAUDE_COMMAND,
+      args: ['attach', opts.attach],
+      env: { PWD: cwd },
+      wheelReports: true,
+    };
   // A resumed session keeps its id and appends to its old transcript.
   const args = [opts?.resume ? '--resume' : '--session-id', sessionId];
   if (opts?.bypassPermissions) args.push('--dangerously-skip-permissions');
-  return { command: CLAUDE_COMMAND, args, env: { PWD: cwd } };
+  return { command: CLAUDE_COMMAND, args, env: { PWD: cwd }, wheelReports: true };
 }
 
 /**

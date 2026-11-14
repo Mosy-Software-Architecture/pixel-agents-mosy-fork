@@ -19,11 +19,16 @@ import { TerminalConnection } from '../terminal/terminalClient.js';
 import { isTypingInTerminal } from '../terminal/terminalDom.js';
 import { terminalLinkOpener } from '../terminal/terminalLinks.js';
 import { attachTouchInput } from '../terminal/touchInput.js';
+import { attachWheelReports } from '../terminal/wheelReports.js';
 
 interface TerminalPaneProps {
   agentId: number;
   /** Whether this pane is the one shown (hidden ones are display:none). */
   isActive: boolean;
+  /** The program in this terminal scrolls its alternate screen by mouse wheel
+   *  reports it never asks for (terminal/wheelReports.ts). Read through a
+   *  ref: flipping it must not rebuild the terminal. */
+  wheelReports?: boolean;
   onStatusChange?: (agentId: number, status: TerminalConnectionStatus | null) => void;
   /** Override the terminal font size (mobile uses a smaller face for columns). */
   fontSizePx?: number;
@@ -54,6 +59,7 @@ export interface TerminalInputHandle {
 export function TerminalPane({
   agentId,
   isActive,
+  wheelReports = false,
   onStatusChange,
   fontSizePx = TERMINAL_FONT_SIZE_PX,
   autoFocus = true,
@@ -70,6 +76,8 @@ export function TerminalPane({
   statusRef.current = onStatusChange;
   const isActiveRef = useRef(isActive);
   isActiveRef.current = isActive;
+  const wheelReportsRef = useRef(wheelReports);
+  wheelReportsRef.current = wheelReports;
   const registerInputRef = useRef(onRegisterInput);
   registerInputRef.current = onRegisterInput;
   // Read only when the terminal first opens — as a dependency, flipping it
@@ -130,6 +138,15 @@ export function TerminalPane({
     registerInputRef.current?.(agentId, {
       send: (data) => connection.write(data),
       cols: () => term.cols,
+    });
+    // The wheel on the alternate screen of a program that scrolls by wheel
+    // reports without turning mouse tracking on (Claude Code with
+    // CLAUDE_CODE_DISABLE_MOUSE=1): sent as those reports, through the same
+    // path as keystrokes. Touch drags reach it as wheel events too.
+    const detachWheel = attachWheelReports(term, host, {
+      wheelReports: () => wheelReportsRef.current,
+      send: (data) => connection.write(data),
+      fallbackRowHeightPx: fontSizePx,
     });
 
     // Touch: scroll + flick, tap to focus / open a URL, long-press selection
@@ -206,6 +223,7 @@ export function TerminalPane({
       if (resizeTimer) clearTimeout(resizeTimer);
       if (verifyFrame !== null) cancelAnimationFrame(verifyFrame);
       detachTouch();
+      detachWheel();
       detachClipboard();
       observer.disconnect();
       registerInputRef.current?.(agentId, null);

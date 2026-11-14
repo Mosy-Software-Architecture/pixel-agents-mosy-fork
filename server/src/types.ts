@@ -37,6 +37,13 @@ export interface AgentState {
   /** Its remote session is a service (`claude --name svc-<service>`): the
    *  label says `svc @host`, its terminal attaches and never resumes. */
   remoteService?: boolean;
+  /** The program in the office's terminal on this agent scrolls its
+   *  alternate screen by mouse wheel reports it never asks the terminal for
+   *  (the launch command said so: Claude Code, launched, resumed or attached).
+   *  Told to the client with the terminal (`terminalSessionOpened.wheelReports`).
+   *  Persisted, so a terminal kept by the PTY host still says so after a
+   *  server restart. */
+  wheelReports?: boolean;
   /** Timestamp of last JSONL data received (ms since epoch) */
   lastDataAt: number;
   /** Total JSONL lines processed for this agent */

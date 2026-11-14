@@ -142,6 +142,7 @@ function App() {
     terminalAvailable,
     terminalUnavailableReason,
     terminalAgentIds,
+    wheelReportAgentIds,
     cardAgents,
     saveCardOrder,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
@@ -854,6 +855,7 @@ function App() {
           drawer={terminalDrawer}
           agentIds={cardAgents}
           terminalAgentIds={terminalAgentIds}
+          wheelReportAgentIds={wheelReportAgentIds}
           focusedAgentId={focusedAgentId}
           terminalAvailable={terminalAvailable}
           terminalUnavailableReason={terminalUnavailableReason}
@@ -919,6 +921,7 @@ function App() {
           {terminalAvailable && (
             <TerminalDrawer
               agentIds={terminalAgentIds}
+              wheelReportAgentIds={wheelReportAgentIds}
               shownAgentId={terminalDrawer.shownAgentId}
               isOpen={terminalDrawer.isOpen}
               widthPx={terminalDrawer.widthPx}
