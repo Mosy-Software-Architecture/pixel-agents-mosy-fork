@@ -7,6 +7,7 @@ import type {
   RemoteHostConversations,
 } from '../../../core/src/messages.js';
 import type { TabStatus } from '../components/AgentCard.js';
+import { markTitle } from '../components/cardBar.js';
 import { CharacterMugShot } from '../components/CharacterMugShot.js';
 import { STATUS_DOT } from '../components/statusDot.js';
 import { PixelIcon } from '../components/ui/PixelIcon.js';
@@ -23,7 +24,7 @@ import { prefersReducedMotion } from '../hooks/usePresence.js';
 import { useShowDirectoryNames } from '../hooks/useShowDirectoryNames.js';
 import { shownDirectoryName } from '../office/directoryNames.js';
 import { goesToAgent, liveElsewhereBadge, liveElsewhereTitle } from './liveElsewhere.js';
-import { recentSection } from './recent.js';
+import { doneHiddenCount, recentSection } from './recent.js';
 import {
   remoteCanOpen,
   remoteHostNote,
@@ -122,6 +123,8 @@ export function ConversationList({
     );
   }
   const recent = recentSection(list.directories, RECENT_CONVERSATIONS_COUNT);
+  // Done ones are left out of every list; the search still has them.
+  const doneHidden = doneHiddenCount(list.directories);
   const now = list.receivedAt;
   return (
     <div className="flex-1 min-h-0 quiet-scrollbar">
@@ -129,7 +132,7 @@ export function ConversationList({
       <section data-testid="recent-conversations" className="pb-6 border-b-2 border-border">
         <SectionHeading
           action={
-            onSearch && recent.rows.length > 0 ? (
+            onSearch && (recent.rows.length > 0 || doneHidden > 0) ? (
               <TextButton testId="conversations-see-all" onPress={() => onSearch({})}>
                 See all
               </TextButton>
@@ -139,7 +142,9 @@ export function ConversationList({
           Recent
         </SectionHeading>
         {recent.rows.length === 0 ? (
-          <p className="m-0 px-10 py-2 text-xs text-text-muted">No conversations</p>
+          <p className="m-0 px-10 py-2 text-xs text-text-muted">
+            {doneHidden > 0 ? 'No open conversations' : 'No conversations'}
+          </p>
         ) : (
           recent.rows.map(({ conversation, directory }) => (
             <ConversationRow
@@ -230,7 +235,7 @@ function RemoteHostSection({
   onPress: (conversation: Conversation) => void;
 }) {
   const note = remoteHostNote(host);
-  const { work, services, moreWork, moreServices } = remotePage(host, shown);
+  const { work, services, moreWork, moreServices, doneHidden } = remotePage(host, shown);
   const row = (conversation: Conversation) => (
     <ConversationRow
       key={conversation.sessionId}
@@ -261,6 +266,9 @@ function RemoteHostSection({
         </p>
       ) : (
         <>
+          {work.length === 0 && services.length === 0 && doneHidden > 0 && (
+            <p className="m-0 px-10 py-2 text-xs text-text-muted">No open sessions</p>
+          )}
           {work.map(row)}
           {moreWork && (
             <ShowMore testId="remote-host-show-more" onPress={() => onShowMore('work')} />
@@ -421,12 +429,16 @@ function DirectorySection({
       </button>
       <Unfold open={expanded}>
         {/* A rule along the bottom: where its drawer ends. */}
-        {directory.conversations.length === 0 ? (
+        {directory.conversations.length === 0 && !directory.doneHidden ? (
           <p className="m-0 px-10 py-4 border-b-2 border-border text-xs text-text-muted">
             No conversations
           </p>
         ) : (
           <div className="py-2 border-b-2 border-border">
+            {/* Every one of them done: the search still lists them. */}
+            {directory.conversations.length === 0 && (
+              <p className="m-0 px-10 py-2 text-xs text-text-muted">No open conversations</p>
+            )}
             {directory.conversations.map((conversation) => (
               <ConversationRow
                 key={conversation.sessionId}
@@ -526,6 +538,9 @@ export interface RowProps {
   roomy: boolean;
   /** The remote host it runs on: a running one is marked with the house. */
   remoteHost?: string;
+  /** Mark it done, or take the mark off (a check button at the row's end;
+   *  the search's rows, where done ones are listed). Absent: no button. */
+  onToggleDone?: () => void;
 }
 
 /**
@@ -541,17 +556,19 @@ export function ConversationRow({
   now,
   roomy,
   remoteHost,
+  onToggleDone,
 }: RowProps) {
-  const { title, updatedAt, palette, repeat, agentId, liveElsewhere } = conversation;
+  const { title, updatedAt, palette, repeat, agentId, liveElsewhere, done } = conversation;
   const mark = rowMark(conversation, remoteHost !== undefined, statusFor);
   // Settings → Show Directory Names off: no Directory line (one Directory says nothing).
   const where = shownDirectoryName(directoryName, useShowDirectoryNames());
   // A remote service outside tmux can't be opened at all.
   const disabled = remoteHost !== undefined && !remoteCanOpen(conversation);
-  return (
+  const row = (
     <button
       type="button"
       data-testid="conversation-row"
+      data-done={done || undefined}
       // aria-disabled, not disabled: the tooltip saying why must still show.
       aria-disabled={disabled || undefined}
       onClick={disabled ? undefined : onPress}
@@ -564,7 +581,7 @@ export function ConversationRow({
               ? `Open a terminal on "${title}" here`
               : `Resume "${title}"`
       }
-      className={`w-full flex items-center gap-8 px-10 ${roomy ? 'py-8' : where ? 'py-3' : 'py-5'} bg-transparent border-none rounded-none text-left text-text ${disabled ? 'cursor-default' : 'cursor-pointer hover:bg-btn-bg'}`}
+      className={`w-full min-w-0 flex items-center gap-8 px-10 ${roomy ? 'py-8' : where ? 'py-3' : 'py-5'} bg-transparent border-none rounded-none text-left text-text ${disabled ? 'cursor-default' : 'cursor-pointer hover:bg-btn-bg'}`}
     >
       <span className="shrink-0 flex" style={{ width: MUGSHOT_CROP_SIDE_PX }}>
         {palette !== undefined ? (
@@ -583,12 +600,24 @@ export function ConversationRow({
       <span className="flex-1 min-w-0 flex flex-col leading-none">
         {/* Tinted with the session's /color, as the label over its character
             is: the same colour means the same session everywhere. */}
-        <span
-          data-testid="conversation-title"
-          className="text-sm overflow-hidden text-ellipsis whitespace-nowrap"
-          style={{ color: conversationTitleColor(conversation) }}
-        >
-          {title}
+        <span className="flex items-center gap-4 min-w-0">
+          {/* Marked done: a green check in front of the title. */}
+          {done && (
+            <span
+              data-testid="conversation-done"
+              aria-label="Done"
+              className="shrink-0 flex text-status-success"
+            >
+              <PixelIcon name="check" scale={1} />
+            </span>
+          )}
+          <span
+            data-testid="conversation-title"
+            className="text-sm overflow-hidden text-ellipsis whitespace-nowrap"
+            style={{ color: conversationTitleColor(conversation) }}
+          >
+            {title}
+          </span>
         </span>
         {where && (
           <span className="-mt-1 text-2xs text-text-muted overflow-hidden text-ellipsis whitespace-nowrap">
@@ -615,6 +644,29 @@ export function ConversationRow({
         testId="conversation-status"
       />
     </button>
+  );
+  if (!onToggleDone) return row;
+  // A sibling of the row's button (a button can't hold one): shown while the
+  // row is hovered, always on the phone, and always on a done row.
+  return (
+    <div className="group/row relative flex items-stretch hover:bg-btn-bg">
+      {row}
+      <button
+        type="button"
+        data-testid="conversation-mark-done"
+        aria-pressed={done === true}
+        onClick={onToggleDone}
+        title={markTitle(done === true)}
+        aria-label={markTitle(done === true)}
+        className={`shrink-0 flex items-center px-6 bg-transparent border-none rounded-none cursor-pointer ${
+          done
+            ? 'text-status-success hover:text-text-muted'
+            : `text-text-muted hover:text-status-success ${roomy ? '' : 'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100'}`
+        }`}
+      >
+        <PixelIcon name="check" scale={1} />
+      </button>
+    </div>
   );
 }
 

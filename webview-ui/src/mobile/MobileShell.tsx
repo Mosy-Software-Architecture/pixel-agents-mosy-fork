@@ -39,6 +39,9 @@ interface MobileShellProps {
   /** Stop an agent's background session (the card's skull); absent where
    *  this office may not (read-only, VS Code). */
   onStopSession?: (agentId: number) => void;
+  /** Mark an agent's session done or not (the card's check); absent where
+   *  this office may not (read-only, VS Code). */
+  onMarkDone?: (sessionId: string, done: boolean) => void;
   /** Persist a dragged card order; absent in a read-only office. */
   onReorder?: (order: number[]) => void;
   /** Opens the Characters view; absent in a read-only office, which hides the
@@ -74,6 +77,7 @@ export function MobileShell({
   onEditDirectory,
   onCloseAgent,
   onStopSession,
+  onMarkDone,
   onReorder,
   onOpenCharacters,
   keyboardOpen,
@@ -156,6 +160,7 @@ export function MobileShell({
         onSelectAgent={shell.selectCard}
         onCloseAgent={onCloseAgent}
         onStopSession={onStopSession}
+        onMarkDone={onMarkDone}
         onReorder={onReorder}
         onLaunchDirectory={shell.launch}
         directories={directories}

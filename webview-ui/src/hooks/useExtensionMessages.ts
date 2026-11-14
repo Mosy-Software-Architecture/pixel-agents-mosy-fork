@@ -23,6 +23,7 @@ import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js';
 import { applyPendingAckMessage, clearPendingAck } from '../office/pendingAck.js';
 import { clearAgentSessionInfo, setAgentSessionInfo } from '../office/sessionLabel.js';
+import { setSessionMarks } from '../office/sessionMarks.js';
 import { setCarpetSprites } from '../office/sprites/carpetTiles.js';
 import { setPetTemplates } from '../office/sprites/petSpriteData.js';
 import {
@@ -929,6 +930,9 @@ export function useExtensionMessages(
       } else if (msg.type === 'agentBackgroundSessions') {
         // Whose card can stop its session (office/backgroundSessions.ts).
         setBackgroundSessions(msg.agents);
+      } else if (msg.type === 'agentSessionMarks') {
+        // Whose session is marked done (office/sessionMarks.ts, the card's check).
+        setSessionMarks(msg.agents);
       } else if (msg.type === 'agentSessionStopFailed') {
         console.error(`[Webview] Could not stop agent ${msg.id}'s session: ${msg.reason}`);
         stopFailed(msg.id, msg.reason);

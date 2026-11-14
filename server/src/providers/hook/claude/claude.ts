@@ -37,6 +37,7 @@ import { conversationTitle, sessionInfo, sessionInfoFromRecord } from './convers
 import { liveSessions, mergeLiveSessions } from './liveSessions.js';
 import { startsNoTurn } from './localCommands.js';
 import { isInheritedClaudeSessionEnv } from './sessionEnv.js';
+import { claudeSessionMarks } from './sessionMarks.js';
 
 // ── formatToolStatus: moved from src/transcriptParser.ts ──
 
@@ -444,6 +445,7 @@ export const claudeProvider: HookProvider = {
     });
   },
   stopBackgroundSession: (backgroundId) => stopBackgroundSession(backgroundId, cliRunner),
+  sessionMarks: claudeSessionMarks,
 
   team: claudeTeamProvider,
   usageBridge: claudeUsageBridge,

@@ -33,6 +33,10 @@ An agent with no terminal — a non-interactive run adopted from outside the off
 A session running in the CLI's background service with no terminal (Claude Code's `claude --bg`). It outlives the terminals attached to it and the office server. The office's + Agent starts its agents as background sessions and attaches its terminal to them; while no terminal is attached, the agent is Headless. Opening one attaches (`claude attach`); it is never resumed. Stopping one (`claude stop`, the skull on its agent's card) ends it; its transcript stays as a past conversation.
 _Avoid_: daemon session, detached agent
 
+**Done mark**:
+A session the user (or a tool acting for them: feature-flow, the `agent` CLI) called finished, recorded in the CLI's marks file (Claude Code: `$CLAUDE_CONFIG_DIR/session-marks.json`, shared by every tool that marks). A done conversation leaves the sidebar's lists and shows only under See all and in search, with a green check before its title; a live agent whose session is marked shows the check on its card. The mark holds until the user sends the session another prompt (a tool result, a local command or a background notice does not count); from then on it is void, whatever the file says. Not the Done status, which is a finished turn.
+_Avoid_: archived, closed, "done" alone
+
 **Character**:
 The animated pixel-art figure representing an agent in the office. An agent has a status and a session; its character has a position and an animation state.
 _Avoid_: avatar, sprite (a sprite is the image asset, not the figure)

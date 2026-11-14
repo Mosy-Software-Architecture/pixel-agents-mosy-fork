@@ -160,6 +160,10 @@ function spawnStandaloneHost(args: {
     HOME: args.homeDir,
     USERPROFILE: args.homeDir,
   };
+  // Claude Code's config directory follows $CLAUDE_CONFIG_DIR before $HOME: an
+  // inherited one would point the server (registry, done marks) outside the
+  // isolated HOME.
+  delete env.CLAUDE_CONFIG_DIR;
   if (args.mockClaude) {
     // The host's PTYs inherit its env, so a browser-launched `claude` resolves
     // to the mock. PIXEL_AGENTS_NODE_BIN keeps the wrapper on this exact node.

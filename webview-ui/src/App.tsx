@@ -418,6 +418,12 @@ function App() {
     transport.send({ type: 'stopAgentSession', id });
   }, []);
 
+  // A card's or a search row's check: mark the session done, or take the
+  // mark off (the server writes session-marks.json and tells every office).
+  const handleMarkDone = useCallback((sessionId: string, done: boolean) => {
+    transport.send({ type: 'setSessionDone', sessionId, done });
+  }, []);
+
   const { reveal: revealTerminal } = terminalDrawer;
   const handleClick = useCallback(
     (agentId: number) => {
@@ -856,6 +862,7 @@ function App() {
           onEditDirectory={directoryEditor.edit}
           onCloseAgent={handleCloseAgent}
           onStopSession={officeReadOnly ? undefined : handleStopSession}
+          onMarkDone={officeReadOnly ? undefined : handleMarkDone}
           onReorder={officeReadOnly ? undefined : saveCardOrder}
           onOpenCharacters={officeReadOnly ? undefined : openCharacters}
           keyboardOpen={keyboard.keyboardOpen}
@@ -895,6 +902,7 @@ function App() {
               onSelect={handleCardSelect}
               onClose={handleCloseAgent}
               onStopSession={officeReadOnly ? undefined : handleStopSession}
+              onMarkDone={officeReadOnly ? undefined : handleMarkDone}
               onReorder={officeReadOnly ? undefined : saveCardOrder}
               trailing={
                 terminalAvailable && terminalAgentIds.length > 0 ? (
@@ -996,6 +1004,7 @@ function App() {
       <ConversationSearch
         scope={conversationSearch}
         onClose={() => setConversationSearch(null)}
+        onMarkDone={officeReadOnly ? undefined : handleMarkDone}
         onResume={(sessionId, directoryPath) => {
           resumeAndFocus(sessionId, directoryPath);
           if (isMobile) menu.close();

@@ -30,6 +30,9 @@ interface ConversationSearchProps {
   roomy?: boolean;
   /** Above whatever opened it (the phone's menu). */
   zIndex?: number;
+  /** Mark a local conversation done or not (its row's check button); absent
+   *  in a read-only office. Done conversations are listed here only. */
+  onMarkDone?: (sessionId: string, done: boolean) => void;
 }
 
 /**
@@ -39,7 +42,9 @@ interface ConversationSearchProps {
  * that host's listing. The server does the searching (the office only holds
  * what the sidebar shows); results come a page at a time, the next asked for
  * as the list scrolls near its end. A host's listing is the sidebar's, so it
- * is searched here, kept fresh by the sidebar's own refreshes.
+ * is searched here, kept fresh by the sidebar's own refreshes. Done
+ * conversations (which the sidebar's lists leave out) are listed too, with a
+ * check before the title; a local row's check button marks or unmarks it.
  * Mounted at App's top level, so both shells show it.
  */
 export function ConversationSearch(props: ConversationSearchProps) {
@@ -80,12 +85,16 @@ function SearchBody({
   onOpenRemote,
   statusFor,
   roomy = false,
+  onMarkDone,
 }: ConversationSearchProps & { scope: ConversationSearchScope }) {
   const [query, setQuery] = useState('');
   const [sent, setSent] = useState('');
   const [directory, setDirectory] = useState(scope.directoryPath ? scope : null);
   const [limit, setLimit] = useState(CONVERSATION_SEARCH_PAGE);
   const [answer, setAnswer] = useState<Results | null>(null);
+  // Bumped when a done mark changes anywhere: the same question is asked
+  // again, so a row marked or unmarked shows it.
+  const [marksSeen, setMarksSeen] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const directoryPath = directory?.directoryPath;
   // A remote host's listing (and when it came), searched here; null once its
@@ -118,6 +127,14 @@ function SearchBody({
     return () => clearTimeout(timer);
   }, [query]);
 
+  useEffect(
+    () =>
+      transport.onMessage((msg) => {
+        if (msg.type === 'agentSessionMarks') setMarksSeen((n) => n + 1);
+      }),
+    [],
+  );
+
   // Ask; take only the answer to the latest question.
   useEffect(() => {
     if (hostName !== undefined) return;
@@ -133,7 +150,7 @@ function SearchBody({
       ...(directoryPath !== undefined ? { directoryPath } : {}),
     });
     return unsubscribe;
-  }, [sent, directoryPath, limit, hostName]);
+  }, [sent, directoryPath, limit, hostName, marksSeen]);
 
   // The answer to this search (at any page), if it came.
   const current =
@@ -234,6 +251,9 @@ function SearchBody({
               statusFor={statusFor}
               now={answer?.receivedAt ?? 0}
               roomy={roomy}
+              onToggleDone={
+                onMarkDone && (() => onMarkDone(conversation.sessionId, !conversation.done))
+              }
             />
           ))}
         {!host && shown.length === 0 && (

@@ -269,3 +269,10 @@ export const REMOTE_MIRROR_DIR_NAME = 'remote';
  *  CLI's background service (agentBackgroundSessions, the cards' stop button)
  *  while the office has agents; agents coming and going re-read it at once. */
 export const BACKGROUND_SESSION_AGENTS_CHECK_MS = 10_000;
+
+/** How often the standalone server re-reads which agents' sessions are marked
+ *  done (agentSessionMarks, the cards' check) while the office has agents:
+ *  a user prompt voids a mark without touching the marks file. A change to
+ *  the file, an agent coming or going and a turn starting or ending re-read
+ *  it at once. */
+export const SESSION_MARKS_CHECK_MS = 10_000;

@@ -138,6 +138,8 @@ components:
         # Background sessions (stop one from its card)
         - $ref: '#/components/schemas/AgentBackgroundSessions'
         - $ref: '#/components/schemas/AgentSessionStopFailed'
+        # Done marks (session-marks.json)
+        - $ref: '#/components/schemas/AgentSessionMarks'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
       discriminator: type
@@ -181,6 +183,7 @@ components:
         - $ref: '#/components/schemas/SearchConversations'
         - $ref: '#/components/schemas/ResumeConversation'
         - $ref: '#/components/schemas/OpenRemoteConversation'
+        - $ref: '#/components/schemas/SetSessionDone'
         - $ref: '#/components/schemas/RequestDiagnostics'
       discriminator: type
 
@@ -1191,6 +1194,13 @@ components:
         more:
           type: boolean
           description: It has older past conversations than the ones listed (the sidebar offers to show more).
+        doneHidden:
+          type: integer
+          description: >-
+            How many of its conversations were left out because their session
+            is marked done (Conversation.done). They count neither toward the
+            listed ones nor toward `more`; the search (searchConversations)
+            still finds them. Absent when none.
 
     ConversationSearchResults:
       description: >-
@@ -1276,6 +1286,15 @@ components:
             it runs nowhere, and for a local conversation.
         remoteKind:
           $ref: '#/components/schemas/RemoteKind'
+        done:
+          type: boolean
+          description: >-
+            The session is marked done (the coding agent's session-marks file;
+            Claude Code - $CLAUDE_CONFIG_DIR/session-marks.json), and no user
+            prompt came after the mark. The sidebar's lists leave such a
+            conversation out (DirectoryConversations.doneHidden counts them);
+            the search lists it with a check in front of its title. Absent
+            otherwise.
 
     RemoteKind:
       description: >-
@@ -1433,6 +1452,47 @@ components:
           additionalProperties:
             type: string
 
+    AgentSessionMarks:
+      description: >-
+        Every main agent's session and whether it is marked done (the coding
+        agent's session-marks file; Claude Code -
+        $CLAUDE_CONFIG_DIR/session-marks.json, written by the office, by
+        feature-flow and by the `agent` CLI). A mark is void once a user
+        prompt follows it, and the agent is then not done. The whole state
+        each time: sent on connect by a host that reads the marks (the
+        standalone server) and broadcast whenever the file changes or an
+        agent's mark does. The card shows a check when done and offers to
+        mark or unmark it (setSessionDone). Never sent by a host that does
+        not read them.
+      type: object
+      additionalProperties: false
+      required: [type, agents]
+      properties:
+        type:
+          const: agentSessionMarks
+        agents:
+          type: object
+          description: Map of agent ID (string) to its session and mark.
+          additionalProperties:
+            $ref: '#/components/schemas/AgentSessionMark'
+
+    AgentSessionMark:
+      type: object
+      additionalProperties: false
+      required: [sessionId]
+      properties:
+        sessionId:
+          type: string
+        done:
+          type: boolean
+          description: Marked done, and no user prompt came after the mark. Absent otherwise.
+        remote:
+          type: boolean
+          description: >-
+            The session runs on a remote host: its mark is that host's (read
+            with its listing) and the office does not change it. Absent for a
+            local session.
+
     AgentSessionStopFailed:
       description: >-
         A stopAgentSession its sender asked for did not happen: the CLI
@@ -1526,6 +1586,25 @@ components:
           const: closeAgent
         id:
           type: integer
+
+    SetSessionDone:
+      description: >-
+        Mark a local session done (`done: true`) or take the mark off: the
+        server writes the coding agent's session-marks file (Claude Code -
+        $CLAUDE_CONFIG_DIR/session-marks.json, `by: office`), dropping the
+        marks of sessions whose transcript is gone, then broadcasts
+        agentSessionMarks. The id must be a session UUID. Standalone only;
+        refused from a read-only client like every other change.
+      type: object
+      additionalProperties: false
+      required: [type, sessionId, done]
+      properties:
+        type:
+          const: setSessionDone
+        sessionId:
+          type: string
+        done:
+          type: boolean
 
     StopAgentSession:
       description: >-

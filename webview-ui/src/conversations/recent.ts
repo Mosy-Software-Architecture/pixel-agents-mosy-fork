@@ -43,3 +43,10 @@ export function recentSection(
   }
   return { rows: recentAcross(directories, count), more: false, byDirectory: true };
 }
+
+/** How many conversations the lists left out because they are done (each
+ *  Directory's `doneHidden`): the search still lists them, so "See all"
+ *  stays offered while any exist, even with no row shown. */
+export function doneHiddenCount(directories: readonly DirectoryConversations[]): number {
+  return directories.reduce((sum, directory) => sum + (directory.doneHidden ?? 0), 0);
+}

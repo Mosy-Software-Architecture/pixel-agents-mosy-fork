@@ -57,6 +57,38 @@ export function stopMode(
   return phase ? 'shown' : close;
 }
 
+/**
+ * How a card shows its done check (office/sessionMarks.ts), or null for none:
+ * a button that marks or unmarks the session where this office may
+ * (`canMark`: a tokened standalone office; never a remote session, whose mark
+ * is its host's), else `badge`, a check that only shows. Not done, the button
+ * follows the × (`close`). Done, the desktop label already carries a check
+ * before the name (`showLabel`), so the button still follows the ×; the
+ * phone row has no label, so the button (or the badge) stays shown.
+ */
+export function markMode(
+  close: CloseMode,
+  {
+    mark,
+    canMark,
+    showLabel,
+  }: {
+    mark: { done?: boolean; remote?: boolean } | undefined;
+    canMark: boolean;
+    showLabel: boolean;
+  },
+): CloseMode | 'badge' | null {
+  if (!mark) return null;
+  const done = mark.done === true;
+  if (!canMark || mark.remote) return done && !showLabel ? 'badge' : null;
+  return done && !showLabel ? 'shown' : close;
+}
+
+/** The done check's tooltip (and accessible name), on a card or a row. */
+export function markTitle(done: boolean): string {
+  return done ? 'Done: press to take the mark off' : 'Mark as done';
+}
+
 /** A press on the skull: the first arms it, the second (while armed) sends
  *  the stop, and one while stopping does nothing. A failed one arms again. */
 export function stopPress(phase: StopPhase | undefined): { phase: StopPhase; send: boolean } {

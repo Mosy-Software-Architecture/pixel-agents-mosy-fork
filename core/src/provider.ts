@@ -163,6 +163,27 @@ export type SessionInfoRecord =
 
 /** A session of the CLI running right now on this host, in any terminal, as
  *  the CLI itself registers it (HookProvider.liveSessions). */
+/**
+ * Done marks: sessions the user (or a tool acting for them) called finished.
+ * The sidebar hides a done conversation from its lists (the search still
+ * finds it) and the agent card shows a check. A mark holds until a user
+ * prompt follows it in the session's transcript; from then on the session is
+ * not done, whatever the file says.
+ */
+export interface SessionMarks {
+  /** The sessions marked done whose mark still holds, by session id: when
+   *  they were marked (ms since the epoch). A missing or unreadable file is
+   *  no marks. */
+  doneSessions(): ReadonlyMap<string, number>;
+  /** Mark a session done, or take its mark off, as the office. Every write
+   *  also drops the marks of sessions whose transcript is gone and of those
+   *  a user prompt has voided. Throws when the file can't be written. */
+  setDone(sessionId: string, done: boolean): void;
+  /** Call `onChange` whenever the marks file changes on disk (another tool's
+   *  write; the office's own writes are not reported). Returns the stop. */
+  watch(onChange: () => void): () => void;
+}
+
 export interface LiveCliSession {
   sessionId: string;
   /** The process running it. Absent for a background session whose worker is
@@ -339,6 +360,10 @@ export interface HookProvider {
    *  background: a process in a terminal is never the office's to stop.
    *  Undefined = no background service. */
   stopBackgroundSession?(backgroundId: string): Promise<void>;
+  /** Sessions the user marked done (Claude: $CLAUDE_CONFIG_DIR/session-marks.json,
+   *  shared with other tools that mark sessions). Undefined = this CLI keeps
+   *  no such marks. */
+  readonly sessionMarks?: SessionMarks;
 
   /** Optional account-usage reporting (the office's usage bars). */
   readonly usageBridge?: UsageBridge;

@@ -52,6 +52,7 @@ import {
   remoteHostConversations,
   remoteSessionOf,
 } from './remoteHosts.js';
+import { agentSessionMarksMessage, doneSessionsOf, setSessionDone } from './sessionMarks.js';
 import { launchRemoteAgent } from './terminal/remoteAgentLauncher.js';
 import {
   launchBackgroundAgent,
@@ -275,6 +276,7 @@ export function handleClientMessage(
             liveSessions(store),
             conversationLimitsFrom(msg.limits),
             liveElsewhere(store, ptyManager, conversationProvider),
+            doneSessionsOf(conversationProvider),
           ),
           ...(remoteHosts.length > 0
             ? { remoteHosts: remoteHostConversations(remoteHosts, store) }
@@ -315,10 +317,18 @@ export function handleClientMessage(
           liveSessions(store),
           query,
           liveElsewhere(store, ctx.ptyManager, conversationProvider),
+          doneSessionsOf(conversationProvider),
         ),
       });
       break;
     }
+
+    case 'setSessionDone':
+      // The card's and the search row's check: mark the session done or not
+      // (standalone; the read-only gate above already refused a tokenless one).
+      if (!ctx.ptyManager || !conversationProvider) break;
+      setSessionDone(store, conversationProvider, msg);
+      break;
 
     case 'resumeConversation': {
       if (!runtime || !ctx.ptyManager || !conversationProvider) break;
@@ -917,6 +927,12 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // (watchBackgroundSessionAgents).
   if (ctx.ptyManager && conversationProvider?.stopBackgroundSession) {
     send({ ...agentBackgroundSessionsMessage(store, conversationProvider) });
+  }
+
+  // 11. Each agent's session and its done mark (the card's check), where this
+  // server reads the marks: broadcast on change from here on (watchSessionMarks).
+  if (ctx.ptyManager && conversationProvider?.sessionMarks) {
+    send({ ...agentSessionMarksMessage(store, conversationProvider) });
   }
 }
 
