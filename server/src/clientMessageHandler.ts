@@ -54,6 +54,7 @@ import {
 } from './remoteHosts.js';
 import { agentSessionMarksMessage, doneSessionsOf, setSessionDone } from './sessionMarks.js';
 import { launchRemoteAgent } from './terminal/remoteAgentLauncher.js';
+import { terminalSessionOpenedMessage } from './terminal/standaloneAgentLauncher.js';
 import {
   launchBackgroundAgent,
   launchStandaloneAgent,
@@ -916,8 +917,9 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // terminal is unavailable and could not attach anyway.
   if (ctx.ptyManager && ctx.privileged) {
     for (const id of agentIds) {
-      if (ctx.ptyManager.has(id)) {
-        send({ type: 'terminalSessionOpened', agentId: id });
+      const agent = store.get(id);
+      if (agent && ctx.ptyManager.has(id)) {
+        send({ ...terminalSessionOpenedMessage(agent) });
       }
     }
   }

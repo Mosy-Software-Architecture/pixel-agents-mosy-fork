@@ -8,6 +8,8 @@ import { TerminalPaneStack } from './TerminalPaneStack.js';
 interface TerminalDrawerProps {
   /** Agent ids with a live PTY, in open order. */
   agentIds: number[];
+  /** The terminals whose program scrolls by wheel reports (TerminalPane). */
+  wheelReportAgentIds: ReadonlySet<number>;
   /** The pane showing (useTerminalDrawer's resolution). */
   shownAgentId: number | null;
   isOpen: boolean;
@@ -33,6 +35,7 @@ interface TerminalDrawerProps {
  */
 export function TerminalDrawer({
   agentIds,
+  wheelReportAgentIds,
   shownAgentId,
   isOpen,
   widthPx,
@@ -81,6 +84,7 @@ export function TerminalDrawer({
           <div className="relative flex-1 min-h-0 p-4">
             <TerminalPaneStack
               agentIds={agentIds}
+              wheelReportAgentIds={wheelReportAgentIds}
               shownAgentId={shownAgentId}
               onStatusChange={onStatusChange}
               paneClassName="inset-4"

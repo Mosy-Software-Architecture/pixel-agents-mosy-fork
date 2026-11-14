@@ -261,7 +261,14 @@ describe('the Claude provider', () => {
       command: 'claude',
       args: ['attach', '7fdcf719'],
       env: { PWD: '/work' },
+      wheelReports: true,
     });
+  });
+
+  it('says every way it runs Claude Code scrolls by wheel reports (CLAUDE_CODE_DISABLE_MOUSE)', () => {
+    for (const opts of [{}, { resume: true }, { attach: '7fdcf719' }]) {
+      expect(claudeProvider.buildLaunchCommand!('id', '/work', opts).wheelReports).toBe(true);
+    }
   });
 
   it('asks the CLI only once turned on, and lists what it answers', async () => {

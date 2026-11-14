@@ -38,6 +38,7 @@ export function toPersistedAgent(agent: AgentState): PersistedAgent | null {
     backgroundSpawns: persistBackgroundSpawns(agent.backgroundSpawns),
     palette: agent.palette,
     repeat: agent.repeat,
+    wheelReports: agent.wheelReports || undefined,
   };
 }
 
@@ -75,6 +76,7 @@ export function restoredAgentInit(p: PersistedAgent): Omit<AgentStateInit, 'isEx
     teamUsesTmux: p.teamUsesTmux,
     palette: p.palette,
     repeat: p.repeat ?? legacyRepeat(p.clothesHue ?? p.hueShift),
+    wheelReports: p.wheelReports,
   };
 }
 

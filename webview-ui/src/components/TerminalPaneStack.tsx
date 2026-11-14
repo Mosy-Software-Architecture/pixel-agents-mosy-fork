@@ -8,6 +8,9 @@ import { TerminalPane } from './TerminalPane.js';
 interface TerminalPaneStackProps {
   /** Agent ids with a live PTY, in open order. */
   agentIds: number[];
+  /** The terminals whose program scrolls by wheel reports it never asks for
+   *  (terminal/wheelReports.ts). */
+  wheelReportAgentIds: ReadonlySet<number>;
   /** The pane to show (already resolved by useTerminalDrawer). */
   shownAgentId: number | null;
   onStatusChange: (agentId: number, status: TerminalConnectionStatus | null) => void;
@@ -34,6 +37,7 @@ interface TerminalPaneStackProps {
  */
 export function TerminalPaneStack({
   agentIds,
+  wheelReportAgentIds,
   shownAgentId,
   onStatusChange,
   paneClassName,
@@ -76,6 +80,7 @@ export function TerminalPaneStack({
       <TerminalPane
         agentId={agentId}
         isActive={agentId === shownAgentId}
+        wheelReports={wheelReportAgentIds.has(agentId)}
         onStatusChange={onStatusChange}
         fontSizePx={fontSizePx}
         autoFocus={autoFocus}

@@ -155,6 +155,40 @@ test.describe('Standalone / background sessions', () => {
     ).toHaveText('Background · idle', { timeout: 15_000 });
   });
 
+  test('the wheel scrolls an attached session: on its alternate screen it is sent as mouse wheel reports @area:standalone', async ({
+    page,
+    standalone,
+  }) => {
+    await waitForClaudeHookSetup(standalone.tmpHome);
+    enableMockBackgroundSessions(standalone.tmpHome);
+    await arrangeNextClaudeInvocation(standalone.tmpHome, backgroundScenario('wheel reports'));
+
+    await launchFromDrawer(page, standalone.workspaceDir);
+    const terminal = page.locator('.xterm').first();
+    // The mock's attach draws on the alternate screen and, like Claude Code
+    // under CLAUDE_CODE_DISABLE_MOUSE=1, never turns mouse tracking on.
+    await expect(terminal).toContainText('mock claude attached to background session', {
+      timeout: 15_000,
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.querySelector('.xterm')?.classList.contains('enable-mouse-events') ?? null,
+        ),
+      )
+      .toBe(false);
+
+    // Wheel up, then down, over the terminal: the session gets SGR wheel
+    // reports (button 64 up, 65 down) at the cell under the pointer, not the
+    // arrow keys xterm would send.
+    await page.locator('.xterm-screen').first().hover();
+    await page.mouse.wheel(0, -200);
+    await expect(terminal).toContainText('mock attach received: ESC[<64;', { timeout: 5_000 });
+    await page.mouse.wheel(0, 200);
+    await expect(terminal).toContainText('mock attach received: ESC[<65;', { timeout: 5_000 });
+    await expect(terminal).not.toContainText('mock attach received: ESC[A');
+  });
+
   test("the card's skull stops the background session, after a second press, and the agent leaves @area:standalone", async ({
     page,
     standalone,

@@ -184,7 +184,11 @@ describe('launchStandaloneAgent', () => {
     expect(runtime.activeAgentId.current).toBe(1);
 
     // The UI learns a terminal exists so the drawer opens a tab.
-    expect(broadcasts).toContainEqual({ type: 'terminalSessionOpened', agentId: 1 });
+    expect(broadcasts).toContainEqual({
+      type: 'terminalSessionOpened',
+      agentId: 1,
+      wheelReports: true,
+    });
   });
 
   it("never hands a launched agent the office's own CLI session markers", () => {
@@ -406,7 +410,11 @@ describe('launchStandaloneAgent', () => {
       expect(added).toEqual([]);
       expect(store.nextAgentId.current).toBe(5);
       expect(harness.spawnArgs[0].args).toEqual(['--resume', sessionId]);
-      expect(broadcasts).toContainEqual({ type: 'terminalSessionOpened', agentId: 4 });
+      expect(broadcasts).toContainEqual({
+        type: 'terminalSessionOpened',
+        agentId: 4,
+        wheelReports: true,
+      });
       // Watched already: no second watch on the same transcript.
       expect(runtime.jsonlPollTimers.has(4)).toBe(false);
     });
@@ -495,7 +503,11 @@ describe('launchStandaloneAgent', () => {
         file: 'claude',
         args: ['attach', backgroundId],
       });
-      expect(broadcasts).toContainEqual({ type: 'terminalSessionOpened', agentId: id });
+      expect(broadcasts).toContainEqual({
+        type: 'terminalSessionOpened',
+        agentId: id,
+        wheelReports: true,
+      });
       // Its hooks name the session: they reach this agent.
       runtime.handleHookEvent('claude', {
         hook_event_name: 'SessionStart',

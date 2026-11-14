@@ -15,6 +15,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import type { TerminalSessionOpened } from '../../../core/src/messages.js';
 import type { BackgroundSessionStart, HookProvider } from '../../../core/src/provider.js';
 import type { PersistedAgent } from '../../../core/src/schemas.js';
 import { isPersistedSpawnChild, restoredAgentInit } from '../agentPersistence.js';
@@ -177,6 +178,8 @@ export function launchStandaloneAgent(
 
   // Not external from here on: this server owns a process on its session.
   agent.isExternal = false;
+  // Set before admitting: the terminal's announcement carries it.
+  agent.wheelReports = launch.wheelReports || undefined;
   admitTerminalAgent(deps, agent, session);
   // A fresh session starts with an empty context: a full gauge from the spawn on.
   // A resumed one keeps its gauge, read from its transcript.
@@ -384,6 +387,17 @@ function relocatedRecord(provider: HookProvider, record: PersistedAgent): Persis
   return record;
 }
 
+/** The announcement of an agent's terminal, saying whether its program
+ *  scrolls by wheel reports it never asks for (the client then turns the
+ *  wheel into them on the alternate screen, terminal/wheelReports.ts). */
+export function terminalSessionOpenedMessage(agent: AgentState): TerminalSessionOpened {
+  return {
+    type: 'terminalSessionOpened',
+    agentId: agent.id,
+    ...(agent.wheelReports ? { wheelReports: true } : {}),
+  };
+}
+
 /** What every agent with a terminal gets, launched or reattached: a place in
  *  the office, its drawer tab, its removal when the process ends, and its
  *  transcript watched. When the process ends while another terminal (one the
@@ -406,7 +420,7 @@ export function admitTerminalAgent(
   // Tell the UI a terminal exists for this agent, so the drawer opens a tab.
   // A separate message (rather than a field on agentCreated) keeps the protocol
   // change additive for the sibling branches.
-  store.broadcast({ type: 'terminalSessionOpened', agentId: id });
+  store.broadcast({ ...terminalSessionOpenedMessage(agent) });
 
   // The terminal closing is this surface's equivalent of VS Code's
   // "terminal closed -> clean up orphan" pass in fileWatcher.
