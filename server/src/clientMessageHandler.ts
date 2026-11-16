@@ -358,6 +358,7 @@ export function handleClientMessage(
                 seatId: resume.look?.seatId,
                 agentId: resume.agentId,
                 attach: resume.attach,
+                cwd: resume.cwd,
               },
             },
           );

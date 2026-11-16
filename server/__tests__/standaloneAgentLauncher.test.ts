@@ -135,6 +135,24 @@ describe('launchStandaloneAgent', () => {
     expect(harness.spawnArgs[0].args).toEqual(['--resume', sessionId]);
   });
 
+  it('resumes a session that moved below its Directory where it runs, named after the Directory', () => {
+    const harness = workingPtyManager();
+    const sessionId = '0b8a701c-400d-41ea-801f-40de5e070a8e';
+    const worktree = path.join(tempDir, 'repo', '.claude', 'worktrees', 'x');
+    fs.mkdirSync(worktree, { recursive: true });
+    const transcript = path.join(projectDir, `${sessionId}.jsonl`);
+    fs.writeFileSync(transcript, '{"type":"user"}\n');
+
+    const id = launch(harness, {
+      directoryPath: tempDir,
+      resume: { sessionId, transcript, cwd: worktree },
+    });
+
+    expect(harness.spawnArgs[0].options.cwd).toBe(worktree);
+    expect(harness.spawnArgs[0].args).toEqual(['--resume', sessionId]);
+    expect(store.get(id!)?.directoryName).toBe(path.basename(tempDir));
+  });
+
   it('a fresh launch reports an empty context (a full gauge) at once; a resume does not', () => {
     const harness = workingPtyManager();
     const id = launch(harness, { directoryPath: tempDir });

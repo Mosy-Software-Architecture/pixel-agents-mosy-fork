@@ -22,7 +22,6 @@ import {
 } from '../constants.js';
 import { prefersReducedMotion } from '../hooks/usePresence.js';
 import { useShowDirectoryNames } from '../hooks/useShowDirectoryNames.js';
-import { shownDirectoryName } from '../office/directoryNames.js';
 import { goesToAgent, liveElsewhereBadge, liveElsewhereTitle } from './liveElsewhere.js';
 import { doneHiddenCount, recentSection } from './recent.js';
 import {
@@ -34,6 +33,7 @@ import {
   type RemoteShown,
   rowMark,
 } from './remote.js';
+import { rowWhere } from './subpath.js';
 import { timeAgo } from './timeAgo.js';
 import { conversationTitleColor } from './titleColor.js';
 import { type ConversationLimits, useConversations } from './useConversations.js';
@@ -530,7 +530,8 @@ function mostUrgent(statuses: Array<TabStatus | null>): TabStatus | null {
 
 export interface RowProps {
   conversation: Conversation;
-  /** The Directory's name, shown under the title (the Recent section). */
+  /** The Directory's name, shown under the title (the Recent section),
+   *  before the conversation's subpath when it has one. */
   where?: string;
   onPress: () => void;
   statusFor: ConversationListProps['statusFor'];
@@ -558,10 +559,11 @@ export function ConversationRow({
   remoteHost,
   onToggleDone,
 }: RowProps) {
-  const { title, updatedAt, palette, repeat, agentId, liveElsewhere, done } = conversation;
+  const { title, updatedAt, palette, repeat, agentId, liveElsewhere, done, subpath } = conversation;
   const mark = rowMark(conversation, remoteHost !== undefined, statusFor);
-  // Settings → Show Directory Names off: no Directory line (one Directory says nothing).
-  const where = shownDirectoryName(directoryName, useShowDirectoryNames());
+  // Settings → Show Directory Names off: no Directory line (one Directory says
+  // nothing), and no subpath either.
+  const where = rowWhere(directoryName, subpath, useShowDirectoryNames());
   // A remote service outside tmux can't be opened at all.
   const disabled = remoteHost !== undefined && !remoteCanOpen(conversation);
   const row = (
@@ -620,8 +622,12 @@ export function ConversationRow({
           </span>
         </span>
         {where && (
-          <span className="-mt-1 text-2xs text-text-muted overflow-hidden text-ellipsis whitespace-nowrap">
-            {where}
+          <span
+            data-testid="conversation-where"
+            title={where.title}
+            className="-mt-1 text-2xs text-text-muted overflow-hidden text-ellipsis whitespace-nowrap"
+          >
+            {where.text}
           </span>
         )}
         {liveElsewhere && (

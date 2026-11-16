@@ -277,6 +277,17 @@ export interface HookProvider {
 
   /** Session directories to scan. Undefined = no file fallback. */
   getSessionDirs?(workspacePath: string): string[];
+  /** Session directories of the folders below `workspacePath` (never its
+   *  own, getSessionDirs): a session that started there and moved into a
+   *  folder under it (a worktree, a subrepo) is filed under that folder. The
+   *  sidebar lists them under the Directory. Undefined = sessions are filed
+   *  only where they started. */
+  getNestedSessionDirs?(workspacePath: string): string[];
+  /** The working directory a transcript's session runs in, as the transcript
+   *  records it (the folder it is filed under, for a session that moved),
+   *  or undefined when it records none. A resume of a session filed below
+   *  its Directory runs there. */
+  transcriptCwd?(transcriptPath: string): string | undefined;
   /** Root directories containing every session this provider may have started
    *  (across all workspaces). Used by global session discovery / "Watch All
    *  Sessions". Each returned dir contains subdirs whose entries are session

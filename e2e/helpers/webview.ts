@@ -22,6 +22,8 @@ export interface WebviewSettings {
   bypassPermissions?: boolean;
   /** Standalone: list the server's start directory in the launch drawer. */
   showStartDirectory?: boolean;
+  /** The Directory line under conversation rows and over a hovered character. */
+  showDirectoryNames?: boolean;
 }
 
 /** Settings-modal label of the persistent skip-permissions toggle. */
@@ -637,6 +639,9 @@ export async function setSettings(frame: WebviewSurface, settings: WebviewSettin
   }
   if (settings.showStartDirectory !== undefined) {
     await setCheckbox(settingsModal, SHOW_START_DIRECTORY_LABEL, settings.showStartDirectory);
+  }
+  if (settings.showDirectoryNames !== undefined) {
+    await setCheckbox(settingsModal, 'Show Directory Names', settings.showDirectoryNames);
   }
 
   await closeSettingsModal(settingsModal);

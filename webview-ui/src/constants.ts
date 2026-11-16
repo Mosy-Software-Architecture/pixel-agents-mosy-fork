@@ -787,6 +787,10 @@ export const RECENT_CONVERSATIONS_COUNT = 5;
 export const CONVERSATIONS_PER_DIRECTORY = 5;
 /** How many more each "Show more" press lists. */
 export const CONVERSATIONS_SHOW_MORE_STEP = 5;
+/** Characters a conversation row's line under its title shows before a
+ *  subpath (a session that moved below its Directory) is shortened: its first
+ *  and last folders, then without the Directory's name (the sidebar's width). */
+export const CONVERSATION_WHERE_MAX_CHARS = 32;
 /** Search results asked for at a time (scrolling near the end asks for more). */
 export const CONVERSATION_SEARCH_PAGE = 50;
 /** Typing pause before a search is sent. */

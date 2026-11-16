@@ -528,6 +528,7 @@ export interface Conversation {
   title: string;
   color?: string;
   updatedAt: number;
+  subpath?: string;
   palette?: number;
   repeat?: number;
   agentId?: number;
