@@ -35,8 +35,11 @@ export interface RemoteSession {
   sessionId: string;
   /** Its transcript, as a path on the remote host. */
   transcript: string;
-  /** Where it started on the remote host: a resume runs there (the CLI files
-   *  the transcript under that directory and looks for it there). */
+  /** Where it runs on the remote host: a resume runs there (the CLI files
+   *  the transcript under that directory and looks for it there). The working
+   *  directory whose key is the folder the transcript is filed under (a
+   *  session that moved into a worktree or a subrepo was filed again under
+   *  its new one), else where it started. */
   cwd: string;
   /** When its transcript was last written (ms since the epoch, remote clock). */
   updatedAt: number;
@@ -103,6 +106,24 @@ def string_field(key, chunk, index):
     except Exception:
         return None
 
+def string_fields(key, chunk):
+    out = []
+    for raw in re.findall('"' + key + r'":("(?:[^"\\]|\\.)*")', chunk):
+        try:
+            out.append(json.loads(raw))
+        except Exception:
+            pass
+    return out
+
+def filed_cwd(p, tail, head):
+    # A session that changed directory (a worktree, a subrepo) is filed under
+    # its new folder's key: the cwd with that key is where it runs now.
+    key = os.path.basename(os.path.dirname(p))
+    for cwd in list(reversed(string_fields('cwd', tail))) + string_fields('cwd', head):
+        if isinstance(cwd, str) and re.sub('[^a-zA-Z0-9]', '-', cwd) == key:
+            return cwd
+    return None
+
 def scan(chunk, labels):
     for line in chunk.split('\n'):
         if 'title"' not in line and '"agent-' not in line and '"last-prompt"' not in line:
@@ -138,9 +159,9 @@ for p in glob.glob(os.path.join(HOME, 'projects', '*', '*.jsonl')):
         'sessionId': sid,
         'path': p,
         'mtime': st.st_mtime * 1000,
-        # Where it started: the transcript is filed under that directory, and
-        # a resume has to run there to find it.
-        'cwd': string_field('cwd', head or tail, 0),
+        # Where it runs: the transcript is filed under that directory, and a
+        # resume has to run there to find it (else where it started).
+        'cwd': filed_cwd(p, tail, head) or string_field('cwd', head or tail, 0),
         'entrypoint': entrypoint,
         'labels': list(labels.values()),
     }

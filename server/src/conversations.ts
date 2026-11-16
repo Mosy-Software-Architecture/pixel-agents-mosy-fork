@@ -25,6 +25,7 @@ import {
 } from './constants.js';
 import { transcriptSuffix } from './directorySuggestions.js';
 import { writeJsonAtomic } from './jsonFileWatcher.js';
+import { toPathKey } from './pathKey.js';
 import type { AgentState } from './types.js';
 
 /**
@@ -163,17 +164,72 @@ function sessionDirsFor(provider: HookProvider, directoryPath: string): string[]
   return provider.getSessionDirs?.(directoryPath) ?? [];
 }
 
-/** A session's transcript in the Directory at `directoryPath`, if it exists.
- *  The provider's `sessionFilePattern` names transcripts: `*` is the session id. */
+/** Where a Directory's sessions are filed: its own session dirs, and those
+ *  of the folders below it (HookProvider.getNestedSessionDirs: a session that
+ *  moved into a worktree or a subrepo is filed there). */
+interface DirectoryFolders {
+  own: string[];
+  nested: string[];
+}
+
+function foldersOf(provider: HookProvider, directoryPath: string): DirectoryFolders {
+  const own = sessionDirsFor(provider, directoryPath);
+  const ownKeys = new Set(own.map(toPathKey));
+  const nested = (provider.getNestedSessionDirs?.(directoryPath) ?? []).filter(
+    (dir) => !ownKeys.has(toPathKey(dir)),
+  );
+  return { own, nested };
+}
+
+/** A session's transcript in the Directory at `directoryPath` or in a folder
+ *  below it, if it exists: the copy the listing shows (preferredCopy) when
+ *  the coding agent left another one behind. The provider's
+ *  `sessionFilePattern` names transcripts: `*` is the session id. */
 export function findTranscript(
   provider: HookProvider,
   directoryPath: string,
   sessionId: string,
 ): string | undefined {
   const suffix = transcriptSuffix(provider.sessionFilePattern);
-  return sessionDirsFor(provider, directoryPath)
-    .map((dir) => path.join(dir, `${sessionId}${suffix}`))
-    .find((file) => fs.existsSync(file));
+  const { own, nested } = foldersOf(provider, directoryPath);
+  let chosen: TranscriptFile | undefined;
+  for (const dir of [...own, ...nested]) {
+    const file = path.join(dir, `${sessionId}${suffix}`);
+    try {
+      const stat = fs.statSync(file);
+      if (!stat.isFile()) continue;
+      const copy = { path: file, size: stat.size, mtimeMs: stat.mtimeMs };
+      chosen = chosen ? preferredCopy(provider, chosen, copy) : copy;
+    } catch {
+      // Not filed there.
+    }
+  }
+  return chosen?.path;
+}
+
+/**
+ * Where a resumed session has to run when its transcript is filed below the
+ * Directory (`transcript` from findTranscript): the working directory the
+ * transcript records for that folder, the CLI looking for a session where it
+ * runs. Undefined for one filed under the Directory itself, or when the
+ * transcript records none or it is gone (the Directory then).
+ */
+function resumeCwd(
+  provider: HookProvider,
+  directoryPath: string,
+  transcript: string,
+): string | undefined {
+  const folder = toPathKey(path.dirname(transcript));
+  if (sessionDirsFor(provider, directoryPath).some((dir) => toPathKey(dir) === folder)) {
+    return undefined;
+  }
+  const cwd = provider.transcriptCwd?.(transcript);
+  if (!cwd) return undefined;
+  try {
+    return fs.statSync(cwd).isDirectory() ? cwd : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** An agent in the office, as the list needs it: which one runs a session,
@@ -265,6 +321,10 @@ export interface ResumeRequest {
   /** The session runs in the CLI's background service under this short id:
    *  the terminal attaches to it (`claude attach`) instead of resuming it. */
   attach?: string;
+  /** Where the session runs when that is a folder below the Directory (it
+   *  moved into a worktree or a subrepo, and its transcript is filed there):
+   *  the terminal starts there. Absent: in the Directory. */
+  cwd?: string;
 }
 
 /**
@@ -276,7 +336,9 @@ export interface ResumeRequest {
  * exist. A session run by a Headless agent is resumed into that agent
  * (`agentId`): the CLI runs a second process on the same session id. A
  * session live in the CLI's background service is attached to (`attach`),
- * never resumed: a resume would start a copy beside it.
+ * never resumed: a resume would start a copy beside it. The transcript may
+ * be filed below the Directory (a session that moved into a worktree or a
+ * subrepo): the resume then runs where the transcript says it runs (`cwd`).
  */
 export function resumeRequest(
   store: AgentStateStore,
@@ -294,6 +356,7 @@ export function resumeRequest(
   const transcript = findTranscript(provider, directoryPath, sessionId);
   if (!transcript) return null;
   const attach = backgroundIdOf(provider, sessionId);
+  const cwd = resumeCwd(provider, directoryPath, transcript);
   return {
     sessionId,
     directoryPath,
@@ -301,6 +364,7 @@ export function resumeRequest(
     look: conversationLook(sessionId),
     ...(headless ? { agentId: headless.id } : {}),
     ...(attach ? { attach } : {}),
+    ...(cwd ? { cwd } : {}),
   };
 }
 
@@ -309,6 +373,10 @@ interface TranscriptFile {
   path: string;
   size: number;
   mtimeMs: number;
+  /** Filed under a folder below its Directory: that folder's name past the
+   *  Directory's own (what the row shows when the transcript records no
+   *  working directory). */
+  nested?: string;
 }
 
 /** What the listing shows of a transcript besides its look: its title and the
@@ -339,12 +407,137 @@ function cachedLabel(provider: HookProvider, file: TranscriptFile): TranscriptLa
   return label;
 }
 
-/** Every transcript of a Directory, newest first. */
-function directoryTranscripts(directory: Directory, provider: HookProvider): TranscriptFile[] {
+/** The working directories already read (HookProvider.transcriptCwd), kept
+ *  as titleCache keeps titles: while the transcript's size and mtime hold. */
+const cwdCache = new Map<string, { cwd: string | undefined; size: number; mtimeMs: number }>();
+
+function cachedCwd(provider: HookProvider, file: TranscriptFile): string | undefined {
+  const hit = cwdCache.get(file.path);
+  if (hit && hit.size === file.size && hit.mtimeMs === file.mtimeMs) return hit.cwd;
+  const cwd = provider.transcriptCwd?.(file.path);
+  cwdCache.set(file.path, { cwd, size: file.size, mtimeMs: file.mtimeMs });
+  return cwd;
+}
+
+/** Forget what was read of transcripts no listing finds any more. */
+function pruneCaches(found: ReadonlySet<string>): void {
+  for (const cache of [titleCache, cwdCache]) {
+    for (const cached of cache.keys()) if (!found.has(cached)) cache.delete(cached);
+  }
+}
+
+/**
+ * Each Directory's transcripts (in `directories` order), newest first: those
+ * filed under its own folders, and those filed under the folders below it
+ * (`nested`). A folder below two Directories, one inside the other, goes to
+ * the inner one; a Directory's own folder is never another's. A session filed
+ * in several folders (the coding agent may leave a copy behind when one
+ * moves) is placed once, from its newest copy (preferredCopy).
+ */
+function placedTranscripts(
+  directories: readonly Directory[],
+  provider: HookProvider,
+): TranscriptFile[][] {
   const suffix = transcriptSuffix(provider.sessionFilePattern);
-  return sessionDirsFor(provider, directory.path)
-    .flatMap((dir) => transcriptsIn(dir, suffix))
-    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const folders = directories.map((directory) => foldersOf(provider, directory.path));
+  const ownKeys = new Set(folders.flatMap((f) => f.own).map(toPathKey));
+  const nestedKeys = folders.map((f) => new Set(f.nested.map(toPathKey)));
+  // Directory j is inside Directory i when one of j's own folders is below i.
+  const inside = (j: number, i: number) =>
+    folders[j].own.some((dir) => nestedKeys[i].has(toPathKey(dir)));
+  const claimant = new Map<string, number>();
+  folders.forEach((f, i) => {
+    for (const dir of f.nested) {
+      const key = toPathKey(dir);
+      if (ownKeys.has(key)) continue;
+      const held = claimant.get(key);
+      if (held === undefined || inside(i, held)) claimant.set(key, i);
+    }
+  });
+  const placed = folders.map((f, i) => [
+    ...f.own.flatMap((dir) => transcriptsIn(dir, suffix)),
+    ...f.nested
+      .filter((dir) => claimant.get(toPathKey(dir)) === i)
+      .flatMap((dir) => {
+        const nested = nestedFolderName(f.own, dir);
+        return transcriptsIn(dir, suffix).map((file) => ({ ...file, nested }));
+      }),
+  ]);
+  const sessionOf = (file: TranscriptFile) => path.basename(file.path, suffix);
+  const chosen = new Map<string, TranscriptFile>();
+  for (const file of placed.flat()) {
+    const held = chosen.get(sessionOf(file));
+    chosen.set(sessionOf(file), held ? preferredCopy(provider, held, file) : file);
+  }
+  return placed.map((files) =>
+    files
+      .filter((file) => chosen.get(sessionOf(file))?.path === file.path)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs),
+  );
+}
+
+/**
+ * Which of two copies of one session's transcript stands for it: a titled
+ * one over an untitled one (a copy a process started in another folder
+ * wrote before its first prompt holds no history), else the newer one. The
+ * same file twice (two Directories filing sessions in one folder) is itself.
+ */
+function preferredCopy(
+  provider: HookProvider,
+  a: TranscriptFile,
+  b: TranscriptFile,
+): TranscriptFile {
+  if (a.path === b.path) return a;
+  const titledA = cachedLabel(provider, a).title !== undefined;
+  const titledB = cachedLabel(provider, b).title !== undefined;
+  if (titledA !== titledB) return titledA ? a : b;
+  return b.mtimeMs > a.mtimeMs ? b : a;
+}
+
+/** A folder below a Directory, named past the Directory's own folder and the
+ *  separator after it (the longest of its own folders that prefixes it). */
+function nestedFolderName(own: readonly string[], dir: string): string {
+  const name = path.basename(dir);
+  const base = own
+    .map((o) => path.basename(o))
+    .filter((o) => name.length > o.length + 1 && name.startsWith(o))
+    .sort((a, b) => b.length - a.length)[0];
+  return base ? name.slice(base.length + 1) : name;
+}
+
+/**
+ * Where a transcript filed below its Directory runs, relative to the
+ * Directory (`/`-separated): from the working directory it records
+ * (HookProvider.transcriptCwd), else its folder's name. Undefined for one in
+ * the Directory itself; null when the working directory it records is not
+ * below the Directory after all (folder names are lossy: `/work/web-app`
+ * files like a folder `app` below `/work/web`).
+ */
+function subpathOf(
+  file: TranscriptFile,
+  directory: Directory,
+  provider: HookProvider,
+): string | undefined | null {
+  if (file.nested === undefined) return undefined;
+  const cwd = cachedCwd(provider, file);
+  if (cwd === undefined) return file.nested;
+  for (const base of directoryBases(directory.path)) {
+    const rel = path.relative(base, cwd);
+    if (rel && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel)) {
+      return rel.split(path.sep).join('/');
+    }
+  }
+  return null;
+}
+
+/** A Directory's path as given and with its symlinks resolved. */
+function directoryBases(directoryPath: string): string[] {
+  try {
+    const resolved = fs.realpathSync(directoryPath);
+    return resolved === directoryPath ? [directoryPath] : [directoryPath, resolved];
+  } catch {
+    return [directoryPath];
+  }
 }
 
 /** A transcript as a listed conversation, or null when it has no title (a
@@ -356,6 +549,7 @@ function conversationOf(
   looks: Looks,
   elsewhere: ReadonlyMap<string, LiveElsewhere>,
   done: ReadonlyMap<string, number>,
+  subpath?: string,
 ): Conversation | null {
   const sessionId = path.basename(file.path, transcriptSuffix(provider.sessionFilePattern));
   const running = live.get(sessionId);
@@ -368,6 +562,7 @@ function conversationOf(
     title,
     ...(label.color ? { color: label.color } : {}),
     updatedAt: file.mtimeMs,
+    ...(subpath ? { subpath } : {}),
     palette: look?.palette,
     repeat: look?.repeat,
     agentId: running?.agentId,
@@ -406,6 +601,8 @@ function clampLimit(count: number): number {
  * one whose agent has no terminal here `headless`. One whose session is
  * marked done (`done`, HookProvider.sessionMarks) is left out, counted in
  * `doneHidden` and in neither the cap nor `more`: the search still finds it.
+ * A Directory's list takes in the sessions filed below it (placedTranscripts),
+ * each with its `subpath`.
  */
 export function listConversations(
   directories: readonly Directory[],
@@ -418,24 +615,31 @@ export function listConversations(
   const looks = readLooks();
   const found = new Set<string>();
   const suffix = transcriptSuffix(provider.sessionFilePattern);
-  const listed = directories.map((directory): DirectoryConversations => {
+  const placed = placedTranscripts(directories, provider);
+  const listed = directories.map((directory, index): DirectoryConversations => {
     const limit = limits.get(directory.path) ?? CONVERSATIONS_PER_DIRECTORY;
     const conversations: Conversation[] = [];
     let more = false;
     let doneHidden = 0;
-    for (const file of directoryTranscripts(directory, provider)) {
+    for (const file of placed[index]) {
       found.add(file.path);
-      if (done.has(path.basename(file.path, suffix))) {
-        if (conversationOf(file, provider, live, looks, elsewhere, done)) doneHidden++;
-        continue;
-      }
+      const isDone = done.has(path.basename(file.path, suffix));
       // Past the cap, titles are read only until one says there are more.
-      if (conversations.length >= limit) {
-        if (!more) more = conversationOf(file, provider, live, looks, elsewhere, done) !== null;
+      if (!isDone && more) continue;
+      const subpath = subpathOf(file, directory, provider);
+      if (subpath === null) continue;
+      const conversation = () =>
+        conversationOf(file, provider, live, looks, elsewhere, done, subpath);
+      if (isDone) {
+        if (conversation()) doneHidden++;
         continue;
       }
-      const conversation = conversationOf(file, provider, live, looks, elsewhere, done);
-      if (conversation) conversations.push(conversation);
+      if (conversations.length >= limit) {
+        more = conversation() !== null;
+        continue;
+      }
+      const listedOne = conversation();
+      if (listedOne) conversations.push(listedOne);
     }
     return {
       name: directory.name,
@@ -445,7 +649,7 @@ export function listConversations(
       ...(doneHidden > 0 ? { doneHidden } : {}),
     };
   });
-  for (const cached of titleCache.keys()) if (!found.has(cached)) titleCache.delete(cached);
+  pruneCaches(found);
   return listed;
 }
 
@@ -488,6 +692,7 @@ export function titleMatches(title: string, query: string): boolean {
  * Directory or the one asked for, newest first, at most `limit`; `more`: at
  * least one more matches. A session listed under two Directories counts once.
  * Done ones are found too, with `done` (the sidebar's lists leave them out).
+ * Sessions filed below a Directory are its, as in listConversations.
  */
 export function searchConversations(
   directories: readonly Directory[],
@@ -498,16 +703,17 @@ export function searchConversations(
   done: ReadonlyMap<string, number> = new Map(),
 ): { results: FoundConversation[]; more: boolean } {
   const looks = readLooks();
+  const placed = placedTranscripts(directories, provider);
   const files = directories
-    .filter((d) => directoryPath === undefined || d.path === directoryPath)
-    .flatMap((directory) =>
-      directoryTranscripts(directory, provider).map((file) => ({ file, directory })),
-    )
+    .flatMap((directory, index) => placed[index].map((file) => ({ file, directory })))
+    .filter(({ directory }) => directoryPath === undefined || directory.path === directoryPath)
     .sort((a, b) => b.file.mtimeMs - a.file.mtimeMs);
   const results: FoundConversation[] = [];
   const sessions = new Set<string>();
   for (const { file, directory } of files) {
-    const conversation = conversationOf(file, provider, live, looks, elsewhere, done);
+    const subpath = subpathOf(file, directory, provider);
+    if (subpath === null) continue;
+    const conversation = conversationOf(file, provider, live, looks, elsewhere, done, subpath);
     if (!conversation || sessions.has(conversation.sessionId)) continue;
     if (!titleMatches(conversation.title, query)) continue;
     if (results.length === limit) return { results, more: true };

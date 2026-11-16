@@ -98,6 +98,10 @@ export const CLAUDE_SUBAGENT_TOOLS: ReadonlySet<string> = new Set(['Task', 'Agen
 
 /** Bytes read from each end of a transcript looking for its title. */
 export const CONVERSATION_TITLE_SCAN_BYTES = 256 * 1024;
+/** Bytes read from each end of a transcript looking for the working
+ *  directory its session runs in (every user and assistant record carries
+ *  `cwd`, so a short window finds one). */
+export const TRANSCRIPT_CWD_SCAN_BYTES = 64 * 1024;
 /** A title longer than this is cut, with an ellipsis. */
 export const CONVERSATION_TITLE_MAX_CHARS = 120;
 /** The /color name that resets a session's colour (no colour). */

@@ -36,6 +36,7 @@ import {
 import { conversationTitle, sessionInfo, sessionInfoFromRecord } from './conversationTitle.js';
 import { liveSessions, mergeLiveSessions } from './liveSessions.js';
 import { startsNoTurn } from './localCommands.js';
+import { nestedSessionDirs, transcriptCwd } from './nestedSessions.js';
 import { isInheritedClaudeSessionEnv } from './sessionEnv.js';
 import { claudeSessionMarks } from './sessionMarks.js';
 
@@ -431,6 +432,8 @@ export const claudeProvider: HookProvider = {
   contextWindowForModel,
 
   getSessionDirs,
+  getNestedSessionDirs: (workspacePath) => nestedSessionDirs(getSessionDirs(workspacePath)),
+  transcriptCwd,
   getAllSessionRoots,
   sessionFilePattern: '*.jsonl',
   buildLaunchCommand,

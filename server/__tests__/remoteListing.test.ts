@@ -233,6 +233,33 @@ describe.skipIf(!hasPython())('the listing script', () => {
     }
   });
 
+  it('sends where a session that moved runs now: the cwd whose key is its folder', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-listing-'));
+    const id = '00000000-0000-4000-8000-0000000000b1';
+    try {
+      const project = path.join(home, '.claude', 'projects', '-r-repo--claude-worktrees-x');
+      fs.mkdirSync(project, { recursive: true });
+      const record = (cwd: string) => JSON.stringify({ type: 'user', cwd, entrypoint: 'cli' });
+      fs.writeFileSync(
+        path.join(project, `${id}.jsonl`),
+        [
+          record('/r'),
+          record('/r/repo/.claude/worktrees/x'),
+          JSON.stringify({ type: 'ai-title', aiTitle: 'Moved' }),
+        ].join('\n') + '\n',
+      );
+      const out = execFileSync('python3', ['-'], {
+        input: REMOTE_LISTING_SCRIPT,
+        env: { ...process.env, HOME: home },
+      }).toString();
+      expect(parseRemoteListing(out)).toEqual([
+        expect.objectContaining({ sessionId: id, cwd: '/r/repo/.claude/worktrees/x' }),
+      ]);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("reads the host's done marks in the same call, voided by a later prompt", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-listing-'));
     const ids = ['00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000a2'];

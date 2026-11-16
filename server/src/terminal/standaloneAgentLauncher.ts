@@ -56,13 +56,17 @@ export interface LaunchStandaloneAgentOptions {
    *  session takes the terminal instead of a new agent coming in: same id,
    *  character, seat and card, its transcript already watched. With `attach`,
    *  the session runs in the CLI's background service under that short id:
-   *  the terminal attaches to it instead of resuming it. */
+   *  the terminal attaches to it instead of resuming it. With `cwd`, the
+   *  session runs in a folder below the Directory (it moved into a worktree
+   *  or a subrepo): the terminal starts there, while the agent still belongs
+   *  to the Directory (its name and default characters). */
   resume?: {
     sessionId: string;
     transcript: string;
     seatId?: string;
     agentId?: number;
     attach?: string;
+    cwd?: string;
   };
   /** A new session already started in the CLI's background service
    *  (launchBackgroundAgent): the agent takes its id and the terminal
@@ -87,7 +91,8 @@ export function launchStandaloneAgent(
     return null;
   }
 
-  const cwd = options.directoryPath ?? process.cwd();
+  const directoryPath = options.directoryPath ?? process.cwd();
+  const cwd = options.resume?.cwd ?? directoryPath;
   const sessionId =
     options.resume?.sessionId ?? options.background?.sessionId ?? crypto.randomUUID();
   const attach = options.resume?.attach ?? options.background?.backgroundId;
@@ -120,7 +125,7 @@ export function launchStandaloneAgent(
   const id = headless?.id ?? store.nextAgentId.current++;
 
   // The Directory launched into, if the cwd is one: its name and its default characters.
-  const directory = directoryAt(cwd, [hostDirectory()]);
+  const directory = directoryAt(directoryPath, [hostDirectory()]);
   const agent =
     headless ??
     createAgentState({
@@ -137,7 +142,7 @@ export function launchStandaloneAgent(
       // "Side Project" labels its agents that, not "side-project", and the Areas
       // it was assigned in the modal actually match. Falls back to the basename
       // for a cwd that is no Directory at all.
-      directoryName: directory?.name ?? directoryNameFor(cwd),
+      directoryName: directory?.name ?? directoryNameFor(directoryPath),
       providerId: provider.id,
       seatId: options.resume?.seatId,
     });

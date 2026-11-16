@@ -1261,6 +1261,15 @@ components:
         updatedAt:
           type: number
           description: When the transcript last changed, in ms since the epoch.
+        subpath:
+          type: string
+          description: >-
+            Where the session runs, relative to the Directory it is listed
+            under (`/`-separated), when that is a folder below it: a session
+            that started in the Directory and moved into a worktree or a
+            subrepo, whose transcript the coding agent filed under that
+            folder. The folder's encoded name when the transcript records no
+            working directory. Absent for a session in the Directory itself.
         palette:
           type: integer
           description: The character the conversation's agent wears (running) or wore, when the office saw it.
