@@ -20,6 +20,13 @@
 
 <br/>
 
+> **This is a fork.** [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca is the original; this
+> fork follows its `main` and adds, for the standalone office: agents as Claude Code **background sessions** that survive the
+> server (`claude --bg` / `claude attach`), a skull to stop them, **done marks** shared with the shell, **remote hosts** over ssh
+> with their services (`svc-` names), session name and `/color` over each character, wheel scrolling in Claude Code's fullscreen
+> view, and sessions listed under the Directory they moved below. It is not on npm: `npx pixel-agents` installs the original.
+> See [Install this fork](#install-this-fork). Changes are offered upstream when they fit.
+
 Pixel Agents turns the AI coding agents running in your terminals into animated pixel-art characters working in a tiny office. They walk to their desks, sit down, type when they're editing files, read when they're searching, and flag you visually when they're stuck waiting for input. The office is also where you run them: launch an agent into a project, pick its character, and see how much context it has left.
 
 It ships in two forms from the same codebase:
@@ -72,9 +79,21 @@ To use Claude with `--dangerously-skip-permissions`, turn on **Settings → Skip
 
 Pixel Agents also detects Claude sessions started outside the extension. Turn on **Settings → Watch All Sessions** to include sessions from other workspaces.
 
+### Install this fork
+
+The fork is not published to npm. Clone it, build it once, and run the standalone server from the folder whose sessions you want to watch (the office lists that folder's conversations; add others with **+ Directory**):
+
+```bash
+git clone https://github.com/Mosy-Software-Architecture/pixel-agents-mosy-fork.git
+cd pixel-agents-mosy-fork && npm install && npm run build
+cd ~/your/workspace && node /path/to/pixel-agents-mosy-fork/dist/cli.js --port 3100
+```
+
+Requirements on top of the ones above: **Claude Code 2.1.316 or newer** for background sessions, attach, the skull and the `/clear` follow-up (older CLIs fall back to running agents in the office terminal), `ssh` with key access for remote hosts, and macOS or Linux for the usage bars' account endpoint (it reads the token Claude Code keeps). Everything else below applies to the fork as it does to the original. To update: `git pull && npm install && npm run build`, then restart the server.
+
 ### Standalone CLI
 
-Run Pixel Agents from anywhere:
+Run Pixel Agents from anywhere (this installs the **original** package; for this fork see [Install this fork](#install-this-fork)):
 
 ```bash
 npx pixel-agents
