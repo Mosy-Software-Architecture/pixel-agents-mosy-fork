@@ -56,6 +56,7 @@ export type ServerMessage =
   | TerminalSessionClosed
   | AgentBackgroundSessions
   | AgentSessionStopFailed
+  | ResumeRedirected
   | AgentSessionMarks
   | AgentDiagnostics;
 
@@ -521,6 +522,7 @@ export interface DirectoryConversations {
   conversations: Conversation[];
   more?: boolean;
   doneHidden?: number;
+  supersededHidden?: number;
 }
 
 export interface Conversation {
@@ -537,6 +539,7 @@ export interface Conversation {
   remoteStatus?: string;
   remoteKind?: RemoteKind;
   done?: boolean;
+  superseded?: SupersededBy;
 }
 
 export interface LiveElsewhere {
@@ -548,6 +551,12 @@ export interface LiveElsewhere {
 }
 
 export type LiveSessionKind = 'interactive' | 'background';
+
+export interface SupersededBy {
+  sessionId: string;
+  agentId?: number;
+  inferred?: boolean;
+}
 
 export interface RemoteHostConversations {
   name: string;
@@ -597,6 +606,14 @@ export interface AgentSessionStopFailed {
   type: 'agentSessionStopFailed';
   id: number;
   reason: string;
+}
+
+export interface ResumeRedirected {
+  type: 'resumeRedirected';
+  sessionId: string;
+  liveSessionId: string;
+  agentId?: number;
+  notice?: string;
 }
 
 export interface AgentSessionMarks {

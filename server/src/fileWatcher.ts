@@ -85,6 +85,14 @@ export function setTerminalAdapter(adapter: ITerminalAdapter): void {
 let agentRemovalCallback: ((id: number) => void) | null = null;
 
 /** Register the agent removal callback. Called by PixelAgentsViewProvider. */
+/** Whether a session is superseded (supersededSessions.ts): a transcript a
+ *  `/clear` left behind is never adopted as an agent. */
+let supersededCheck: ((sessionId: string) => boolean) | null = null;
+
+export function setSupersededCheck(check: ((sessionId: string) => boolean) | null): void {
+  supersededCheck = check;
+}
+
 export function setAgentRemovalCallback(cb: typeof agentRemovalCallback): void {
   agentRemovalCallback = cb;
 }
@@ -1042,6 +1050,12 @@ export function adoptExternalSessionFromHook(
   persistAgents: () => void,
   onAgentCreated?: (agent: AgentState) => void,
 ): void {
+  if (supersededCheck?.(sessionId)) {
+    console.log(
+      `[Pixel Agents] Hook: session ${sessionId.slice(0, 8)}... not adopted (superseded by a /clear)`,
+    );
+    return;
+  }
   if (transcriptPath) {
     // File-based provider (Claude, Codex): adopt with JSONL file watching
     // Guard: don't adopt if file is already tracked by an agent
@@ -1159,6 +1173,8 @@ function adoptExternalSession(
   persistAgents: () => void,
   directoryName?: string,
 ): void {
+  // A transcript a /clear left behind is no agent of its own.
+  if (supersededCheck?.(path.basename(jsonlFile, '.jsonl'))) return;
   const id = nextAgentIdRef.current++;
   const fileOffset = initialReadOffset(jsonlFile);
   const agent = createAgentState({

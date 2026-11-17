@@ -12,6 +12,7 @@ import {
   STOP_SESSION_FAILED_SHOW_MS,
   STOP_SESSION_STOPPING_MAX_MS,
 } from '../constants.js';
+import { showNotice } from './notices.js';
 
 /** A card's stop button that is not at rest; `reason` when it failed. */
 export interface StopState {
@@ -80,8 +81,11 @@ function setStop(id: number, state: StopState | undefined, clearAfterMs?: number
  *  `send` to stop the session. */
 export function pressStop(id: number, send: (id: number) => void): void {
   const next = stopPress(stopById.get(id)?.phase);
-  if (next.phase === 'armed') setStop(id, { phase: 'armed' }, STOP_SESSION_ARM_MS);
-  else if (next.send) {
+  if (next.phase === 'armed') {
+    setStop(id, { phase: 'armed' }, STOP_SESSION_ARM_MS);
+    // The first press stops nothing: say what the second one does.
+    showNotice('Press the skull again to stop this session', STOP_SESSION_ARM_MS);
+  } else if (next.send) {
     // The agent's agentClosed ends it; a reply that never comes must not
     // leave the skull stuck.
     setStop(id, { phase: 'stopping' }, STOP_SESSION_STOPPING_MAX_MS);
@@ -92,6 +96,7 @@ export function pressStop(id: number, send: (id: number) => void): void {
 /** The server could not stop it (agentSessionStopFailed): show why for a while. */
 export function stopFailed(id: number, reason: string): void {
   setStop(id, { phase: 'failed', reason }, STOP_SESSION_FAILED_SHOW_MS);
+  showNotice(`Could not stop the session: ${reason}`, STOP_SESSION_FAILED_SHOW_MS);
 }
 
 /** The agent left the office: forget its button. */

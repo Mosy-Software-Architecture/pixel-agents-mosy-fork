@@ -12,10 +12,13 @@ import {
   CLAUDE_BACKGROUND_LOOKUP_ATTEMPTS,
   CLAUDE_BACKGROUND_LOOKUP_INTERVAL_MS,
   CLAUDE_BACKGROUND_START_TIMEOUT_MS,
+  CLAUDE_BYPASS_PERMISSIONS_FLAG,
   CLAUDE_COMMAND,
+  CLAUDE_RESUME_FLAG,
   CLAUDE_STOP_COMMAND,
   CLAUDE_STOP_TIMEOUT_MS,
 } from './constants.js';
+import { processFields } from './liveSessions.js';
 import { isInheritedClaudeSessionEnv } from './sessionEnv.js';
 
 /**
@@ -89,6 +92,7 @@ export function parseAgentsList(raw: string): LiveCliSession[] {
       ...(typeof status === 'string' && status ? { status } : {}),
       ...(background ? { kind: 'background' as const, backgroundId: id as string } : {}),
       ...(background && typeof state === 'string' && state ? { state } : {}),
+      ...processFields(entry),
     });
   }
   return sessions;
@@ -176,11 +180,10 @@ export interface StartBackgroundDeps {
  */
 export async function startBackgroundSession(
   cwd: string,
-  opts: { bypassPermissions?: boolean; env: Record<string, string> },
+  opts: { bypassPermissions?: boolean; env: Record<string, string>; resume?: string },
   deps: StartBackgroundDeps,
 ): Promise<BackgroundSessionStart | null> {
-  const args = [CLAUDE_BACKGROUND_FLAG];
-  if (opts.bypassPermissions) args.push('--dangerously-skip-permissions');
+  const args = backgroundStartArgs(opts);
   let stdout: string;
   try {
     stdout = await deps.run(args, {
@@ -190,7 +193,9 @@ export async function startBackgroundSession(
     });
   } catch (err) {
     const why = String((err as { stderr?: string }).stderr ?? '').trim() || String(err);
-    console.log(`[Pixel Agents] Background: claude --bg refused in ${cwd}: ${firstLine(why)}`);
+    console.log(
+      `[Pixel Agents] Background: claude ${args.join(' ')} refused in ${cwd}: ${firstLine(why)}`,
+    );
     return null;
   }
   const backgroundId = backgroundedId(stdout);
@@ -203,7 +208,14 @@ export async function startBackgroundSession(
     const found = (await deps.lookup()).find(
       (s) => s.kind === 'background' && s.backgroundId === backgroundId,
     );
-    if (found) return { sessionId: found.sessionId, backgroundId };
+    if (found) {
+      if (opts.resume !== undefined && found.sessionId !== opts.resume) {
+        console.warn(
+          `[Pixel Agents] Background: claude --bg --resume ${opts.resume} started a copy as ${found.sessionId}`,
+        );
+      }
+      return { sessionId: found.sessionId, backgroundId };
+    }
     await sleep(CLAUDE_BACKGROUND_LOOKUP_INTERVAL_MS);
   }
   console.warn(
@@ -212,6 +224,32 @@ export async function startBackgroundSession(
   );
   return null;
 }
+
+/**
+ * The arguments that start a background session: `--bg`, with the bypass flag
+ * for a new one, or `--resume <id>` to continue a past one. A resume never
+ * passes the bypass flag: Claude Code 2.1.325 keeps a session that ran in the
+ * background before with the options it was started with, and any flag passed
+ * on `--bg --resume` makes it start a copy under a new id instead (measured;
+ * a bare `--bg --resume` keeps the id). An id that is not a session UUID is
+ * no resume: it becomes a CLI argument.
+ */
+export function backgroundStartArgs(opts: {
+  bypassPermissions?: boolean;
+  resume?: string;
+}): string[] {
+  if (opts.resume !== undefined) {
+    if (!SESSION_UUID_PATTERN.test(opts.resume)) {
+      throw new Error(`Not a session id: ${JSON.stringify(opts.resume)}`);
+    }
+    return [CLAUDE_BACKGROUND_FLAG, CLAUDE_RESUME_FLAG, opts.resume];
+  }
+  return opts.bypassPermissions
+    ? [CLAUDE_BACKGROUND_FLAG, CLAUDE_BYPASS_PERMISSIONS_FLAG]
+    : [CLAUDE_BACKGROUND_FLAG];
+}
+
+const SESSION_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A background session's short id as the CLI's commands take it: never
  *  anything the CLI could read as a flag. */

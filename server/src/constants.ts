@@ -276,3 +276,14 @@ export const BACKGROUND_SESSION_AGENTS_CHECK_MS = 10_000;
  *  the file, an agent coming or going and a turn starting or ending re-read
  *  it at once. */
 export const SESSION_MARKS_CHECK_MS = 10_000;
+
+// ── Superseded transcripts (supersededSessions.ts) ──
+/** How often the CLI's live processes are checked for one that switched
+ *  session (a `/clear`, or a `/resume` in the same process). */
+export const SUPERSEDE_REGISTRY_CHECK_MS = 2_000;
+/** Only transcripts written this recently are read to infer a `/clear` the
+ *  office did not see (it was not running). */
+export const SUPERSEDE_INFER_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/** A `/clear` writes to the transcript it leaves: a session it may have left
+ *  was written to no earlier than this before the clear. */
+export const SUPERSEDE_INFER_MTIME_SLACK_MS = 5 * 60 * 1000;

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LiveCliSession } from '../../core/src/provider.js';
 import {
   backgroundedId,
+  backgroundStartArgs,
   type ClaudeCliRunner,
   createAgentsList,
   parseAgentsList,
@@ -64,6 +65,8 @@ describe('claude agents --json', () => {
         kind: 'background',
         backgroundId: '095e9c03',
         state: 'blocked',
+        cwd: '/work',
+        startedAt: 1794581066110,
       },
       {
         sessionId: '7fdcf719-fd04-418f-b911-6a99f154c1e5',
@@ -71,6 +74,7 @@ describe('claude agents --json', () => {
         kind: 'background',
         backgroundId: '7fdcf719',
         state: 'working',
+        cwd: '/work',
       },
       { sessionId: '3e5330b9-ced5-4d05-b237-9b80349a85be', pid: 63707, status: 'busy' },
     ]);
@@ -295,5 +299,49 @@ describe('the Claude provider', () => {
     });
     await claudeProvider.stopBackgroundSession!('095e9c03');
     expect(asked).toEqual([['stop', '095e9c03']]);
+  });
+});
+
+describe('claude --bg arguments', () => {
+  const sid = '4045caed-31ec-42fe-98e3-feb9ea85d005';
+
+  it('starts a new session with the bypass flag when the office bypasses permissions', () => {
+    expect(backgroundStartArgs({})).toEqual(['--bg']);
+    expect(backgroundStartArgs({ bypassPermissions: true })).toEqual([
+      '--bg',
+      '--dangerously-skip-permissions',
+    ]);
+  });
+
+  it('resumes with `--bg --resume <id>` and never a flag (any flag starts a copy)', () => {
+    expect(backgroundStartArgs({ resume: sid, bypassPermissions: true })).toEqual([
+      '--bg',
+      '--resume',
+      sid,
+    ]);
+  });
+
+  it('refuses a resume id that is not a session id', () => {
+    expect(() => backgroundStartArgs({ resume: '--help' })).toThrow();
+  });
+
+  it('a resume runs the CLI with those arguments and finds the same session', async () => {
+    const calls: string[][] = [];
+    const run: ClaudeCliRunner = (args) => {
+      calls.push([...args]);
+      return Promise.resolve('backgrounded · 4045caed (idle — send a prompt to start)\n');
+    };
+    const started = await startBackgroundSession(
+      '/work',
+      { env: {}, resume: sid, bypassPermissions: true },
+      {
+        run,
+        lookup: () =>
+          Promise.resolve([{ sessionId: sid, kind: 'background', backgroundId: '4045caed' }]),
+        sleep: () => Promise.resolve(),
+      },
+    );
+    expect(calls).toEqual([['--bg', '--resume', sid]]);
+    expect(started).toEqual({ sessionId: sid, backgroundId: '4045caed' });
   });
 });

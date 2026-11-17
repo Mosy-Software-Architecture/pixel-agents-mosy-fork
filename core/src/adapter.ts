@@ -27,6 +27,13 @@ export interface StateAdapter {
   loadCardOrder?(): number[];
   saveCardOrder?(order: number[]): void;
 
+  /** Superseded transcripts: a session that `/clear` (or a `/resume` in the
+   *  same process) left behind, by its id, and the session that continues it
+   *  (server/src/supersededSessions.ts owns the shape). An adapter without
+   *  these keeps none. */
+  loadSuperseded?(): unknown;
+  saveSuperseded?(superseded: Record<string, unknown>): void;
+
   // ── User-level settings (shared file, namespaced per adapter) ─────
 
   getSetting<T>(key: string, defaultValue: T): T;

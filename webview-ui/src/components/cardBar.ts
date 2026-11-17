@@ -97,6 +97,15 @@ export function stopPress(phase: StopPhase | undefined): { phase: StopPhase; sen
   return { phase: 'armed', send: false };
 }
 
+/** What the card's activity line says while the skull is not at rest (it
+ *  stands in for the activity), so the two-press rule shows where the user
+ *  looks: undefined at rest and after a failure (a notice says why). */
+export function stopActivity(phase: StopPhase | undefined): string | undefined {
+  if (phase === 'armed') return 'Press again to stop';
+  if (phase === 'stopping') return 'Stopping…';
+  return undefined;
+}
+
 /** The skull's tooltip (and accessible name) for its phase. */
 export function stopTitle(
   phase: StopPhase | undefined,

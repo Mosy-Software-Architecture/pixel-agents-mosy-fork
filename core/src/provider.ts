@@ -204,6 +204,25 @@ export interface LiveCliSession {
   /** A background session's state, in the CLI's words (Claude: working,
    *  blocked, ...): `blocked` waits for the user. */
   state?: string;
+  /** The working directory the process runs in, when the CLI records it. */
+  cwd?: string;
+  /** When the process started (ms since the epoch), when the CLI records it:
+   *  with `pid`, it tells one process from a later one given the same pid. */
+  startedAt?: number;
+}
+
+/** Where a transcript's session starts and ends in time, and how it began
+ *  (HookProvider.transcriptSpan). */
+export interface TranscriptSpan {
+  /** The first record's timestamp (ms since the epoch); undefined when no
+   *  record in the head carries one. */
+  firstAt?: number;
+  /** The last record's timestamp (ms since the epoch); undefined when no
+   *  record in the tail carries one. */
+  lastAt?: number;
+  /** The session began by clearing another one (Claude: its first records
+   *  hold the `/clear` command): the transcript a `/clear` starts. */
+  cleared?: boolean;
 }
 
 /** A session started in the CLI's background service
@@ -353,6 +372,11 @@ export interface HookProvider {
    *  answers from its last answer (refreshLiveSessions). Undefined = this CLI
    *  keeps no such record. */
   liveSessions?(): LiveCliSession[];
+  /** The running processes alone, each with its pid (Claude: the registry,
+   *  ~/.claude/sessions/<pid>.json): read from disk, never by running the
+   *  CLI, so it can be polled every few seconds to see a process switch
+   *  session (a `/clear`). Undefined = no such registry. */
+  registeredSessions?(): LiveCliSession[];
   /** Ask the CLI anew for what liveSessions reads from a cache, for a decision
    *  that must not act on an old answer (attach or resume). Resolves true when
    *  the answer changed. Undefined = liveSessions is always current. */
@@ -364,10 +388,14 @@ export interface HookProvider {
    *  caller launches in a terminal as before, where the CLI can ask. Returns
    *  null at once when this host does not use the background service (so the
    *  launch stays synchronous). `env` is the environment to run the CLI with.
+   *  `resume`: continue that past session in the background instead of
+   *  starting a new one (Claude: `claude --bg --resume <id>`, which keeps the
+   *  id; `bypassPermissions` is ignored then, since passing it makes Claude
+   *  Code start a copy of a session that ran in the background before).
    *  Undefined = no background service. */
   startBackgroundSession?(
     cwd: string,
-    opts: { bypassPermissions?: boolean; env: Record<string, string> },
+    opts: { bypassPermissions?: boolean; env: Record<string, string>; resume?: string },
   ): Promise<BackgroundSessionStart | null> | null;
   /** Stop a session running in the CLI's background service, by the id the
    *  CLI's commands take (LiveCliSession.backgroundId; Claude: `claude stop
@@ -376,6 +404,11 @@ export interface HookProvider {
    *  background: a process in a terminal is never the office's to stop.
    *  Undefined = no background service. */
   stopBackgroundSession?(backgroundId: string): Promise<void>;
+  /** When a transcript's session starts and ends, and whether it began by
+   *  clearing another session: the office links a session cleared while it
+   *  was not running to the one that continues it (supersededSessions.ts).
+   *  Undefined = no such links are inferred. */
+  transcriptSpan?(transcriptPath: string): TranscriptSpan;
   /** Sessions the user marked done (Claude: $CLAUDE_CONFIG_DIR/session-marks.json,
    *  shared with other tools that mark sessions). Undefined = this CLI keeps
    *  no such marks. */

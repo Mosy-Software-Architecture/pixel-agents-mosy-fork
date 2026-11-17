@@ -46,6 +46,13 @@ export interface ClaudeMockDeletePathAction {
   filePath: string;
 }
 
+/** `/clear`: the same process goes on as a new session (new transcript,
+ *  the registry entry switched; no hook fires, as in Claude Code 2.1.325). */
+export interface ClaudeMockClearAction {
+  kind: 'clear';
+  atMs: number;
+}
+
 export interface ClaudeMockExitAction {
   kind: 'exit';
   atMs: number;
@@ -57,6 +64,7 @@ export type ClaudeMockAction =
   | ClaudeMockEmitHookAction
   | ClaudeMockWriteJsonAction
   | ClaudeMockDeletePathAction
+  | ClaudeMockClearAction
   | ClaudeMockExitAction;
 
 export interface ClaudeMockScenario {
@@ -66,6 +74,9 @@ export interface ClaudeMockScenario {
   holdOpenMs: number;
   sessions: ClaudeMockSessionDefinition[];
   actions: ClaudeMockAction[];
+  /** Register the process in the CLI's registry (~/.claude/sessions/<pid>.json),
+   *  under this name. */
+  registry?: { name?: string };
 }
 
 class TimedScenarioStepBuilder {
@@ -115,6 +126,11 @@ class TimedScenarioStepBuilder {
     return this.scenario;
   }
 
+  clear(): ClaudeMockScenarioBuilder {
+    this.scenario.pushAction({ kind: 'clear', atMs: this.atMs });
+    return this.scenario;
+  }
+
   exit(code = 0): ClaudeMockScenarioBuilder {
     this.scenario.pushAction({
       kind: 'exit',
@@ -130,8 +146,15 @@ export class ClaudeMockScenarioBuilder {
   private holdOpenMs = DEFAULT_HOLD_OPEN_MS;
   private readonly sessions: ClaudeMockSessionDefinition[] = [];
   private readonly actions: ClaudeMockAction[] = [];
+  private registry: { name?: string } | undefined;
 
   constructor(private readonly name?: string) {}
+
+  /** Write the process's entry in the CLI's registry, as Claude Code does. */
+  registerSession(options: { name?: string } = {}): ClaudeMockScenarioBuilder {
+    this.registry = options;
+    return this;
+  }
 
   defineSession(
     alias: string,
@@ -189,6 +212,7 @@ export class ClaudeMockScenarioBuilder {
       holdOpenMs: this.holdOpenMs,
       sessions: [...this.sessions],
       actions: [...this.actions].sort((left, right) => left.atMs - right.atMs),
+      ...(this.registry ? { registry: this.registry } : {}),
     };
   }
 }

@@ -630,6 +630,10 @@ export const STOP_SESSION_FAILED_SHOW_MS = 8_000;
 /** The longest a card's skull waits for the server after sending the stop
  *  (the CLI may take its timeout twice over); then it rests again. */
 export const STOP_SESSION_STOPPING_MAX_MS = 45_000;
+/** How long an office notice (office/notices.ts) shows. */
+export const NOTICE_SHOW_MS = 6_000;
+/** How much of a session id a superseded conversation's label shows. */
+export const SUPERSEDED_SHORT_ID_CHARS = 8;
 
 // ── Mobile key bar (MobileKeyBar) ────────────────────────────
 /** Arrow-key byte sequences the trackpad key writes to the PTY. */

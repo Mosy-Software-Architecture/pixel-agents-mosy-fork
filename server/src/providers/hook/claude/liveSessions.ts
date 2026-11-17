@@ -63,6 +63,17 @@ function readEntry(file: string): LiveCliSession | null {
     ...(typeof status === 'string' && status ? { status } : {}),
     ...(background ? { kind: 'background' as const } : {}),
     ...(background && typeof jobId === 'string' && jobId ? { backgroundId: jobId } : {}),
+    ...processFields(raw),
+  };
+}
+
+/** The working directory and start time an entry records (the registry and
+ *  `claude agents --json` both write `cwd` and `startedAt`). */
+export function processFields(raw: Record<string, unknown>): { cwd?: string; startedAt?: number } {
+  const { cwd, startedAt } = raw;
+  return {
+    ...(typeof cwd === 'string' && cwd ? { cwd } : {}),
+    ...(typeof startedAt === 'number' && Number.isFinite(startedAt) ? { startedAt } : {}),
   };
 }
 
@@ -89,6 +100,7 @@ export function mergeLiveSessions(
       if (session.state) known.state = session.state;
       if (!known.backgroundId && session.backgroundId) known.backgroundId = session.backgroundId;
       if (!known.name && session.name) known.name = session.name;
+      if (!known.cwd && session.cwd) known.cwd = session.cwd;
       continue;
     }
     if (session.pid !== undefined && merged.some((s) => s.pid === session.pid)) continue;

@@ -39,6 +39,7 @@ import { startsNoTurn } from './localCommands.js';
 import { nestedSessionDirs, transcriptCwd } from './nestedSessions.js';
 import { isInheritedClaudeSessionEnv } from './sessionEnv.js';
 import { claudeSessionMarks } from './sessionMarks.js';
+import { transcriptSpan } from './transcriptSpan.js';
 
 // ── formatToolStatus: moved from src/transcriptParser.ts ──
 
@@ -443,6 +444,7 @@ export const claudeProvider: HookProvider = {
   sessionInfoFromRecord,
   startsNoTurn,
   liveSessions: claudeLiveSessions,
+  registeredSessions: () => liveSessions(),
   refreshLiveSessions: () => agentsList?.refresh() ?? Promise.resolve(false),
   // Only where the CLI's list is read: without it the new session's full id
   // may never be found.
@@ -458,6 +460,7 @@ export const claudeProvider: HookProvider = {
     });
   },
   stopBackgroundSession: (backgroundId) => stopBackgroundSession(backgroundId, cliRunner),
+  transcriptSpan,
   sessionMarks: claudeSessionMarks,
 
   team: claudeTeamProvider,
