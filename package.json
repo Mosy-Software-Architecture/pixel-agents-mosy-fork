@@ -1,14 +1,14 @@
 {
-  "name": "pixel-agents",
+  "name": "pixel-agents-mosy-fork",
   "displayName": "Pixel Agents",
-  "description": "Pixel art office where your Claude Code agents come to life as animated characters",
+  "description": "Pixel art office for Claude Code agents: a fork of Pixel Agents with background sessions, done marks, remote hosts and services",
   "version": "1.6.0",
   "publisher": "pablodelucca",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pixel-agents-hq/pixel-agents"
+    "url": "https://github.com/Mosy-Software-Architecture/pixel-agents-mosy-fork"
   },
-  "homepage": "https://pixel-agents.com",
+  "homepage": "https://github.com/Mosy-Software-Architecture/pixel-agents-mosy-fork#readme",
   "workspaces": [
     "server",
     "webview-ui"
@@ -177,5 +177,8 @@
   },
   "optionalDependencies": {
     "@lydell/node-pty": "^1.2.0-beta.12"
+  },
+  "bugs": {
+    "url": "https://github.com/Mosy-Software-Architecture/pixel-agents-mosy-fork/issues"
   }
 }

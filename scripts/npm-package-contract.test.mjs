@@ -55,9 +55,9 @@ test('rejects source and preview files even when required files exist', () => {
 
 test('validates release tag, ref, repository, and monotonic version', () => {
   const manifest = {
-    name: 'pixel-agents',
+    name: 'pixel-agents-mosy-fork',
     version: '1.4.0',
-    repository: { url: 'https://github.com/pixel-agents-hq/pixel-agents' },
+    repository: { url: 'https://github.com/Mosy-Software-Architecture/pixel-agents-mosy-fork' },
   };
   assert.doesNotThrow(() =>
     validateReleaseIdentity({
