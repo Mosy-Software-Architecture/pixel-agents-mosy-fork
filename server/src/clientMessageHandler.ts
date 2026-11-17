@@ -24,10 +24,15 @@ import {
 import { MAX_CHARACTER_REPEAT, TERMINAL_REQUIRES_TOKEN_REASON } from './constants.js';
 import {
   conversationLimitsFrom,
+  conversationLook,
   conversationQueryFrom,
+  directoryTranscripts,
   listConversations,
   liveSessions,
   recordConversationLooks,
+  type ResumeRedirect,
+  resumeRedirect,
+  resumeRedirectNotice,
   resumeRequest,
   searchConversations,
   sessionsLiveElsewhere,
@@ -53,11 +58,19 @@ import {
   remoteSessionOf,
 } from './remoteHosts.js';
 import { agentSessionMarksMessage, doneSessionsOf, setSessionDone } from './sessionMarks.js';
+import {
+  applyInferredLinks,
+  reconcileSupersededAgents,
+  sessionTranscriptExists,
+  type SupersedeDeps,
+  transcriptOfSession,
+} from './supersededSessions.js';
 import { launchRemoteAgent } from './terminal/remoteAgentLauncher.js';
 import { terminalSessionOpenedMessage } from './terminal/standaloneAgentLauncher.js';
 import {
   launchBackgroundAgent,
   launchStandaloneAgent,
+  resumeInBackground,
 } from './terminal/standaloneAgentLauncher.js';
 import type { TerminalSessions } from './terminal/terminalSessions.js';
 import { applyUsageBridgeChoice, usageSnapshotMessages } from './usageLimits.js';
@@ -139,6 +152,26 @@ const resumesInFlight = new Set<string>();
  *  for the CLI twice): a second press meanwhile stops nothing more. */
 const stopsInFlight = new Set<number>();
 
+/** What applying a superseded link needs (supersededSessions.ts), where the
+ *  office keeps them (the standalone server). */
+function supersedeDepsOf(ctx: ClientMessageContext): SupersedeDeps | null {
+  const { runtime, store } = ctx;
+  if (!runtime?.superseded || !conversationProvider) return null;
+  return {
+    store,
+    runtime,
+    provider: conversationProvider,
+    superseded: runtime.superseded,
+    terminals: ctx.ptyManager,
+  };
+}
+
+/** The superseded sessions and what continues each (none where the office
+ *  keeps no links). */
+function supersededOf(ctx: ClientMessageContext) {
+  return ctx.runtime?.superseded?.successors() ?? new Map();
+}
+
 /** The sessions open in a terminal the office did not launch: the CLI's
  *  running processes, less this office's own terminals. */
 function liveElsewhere(
@@ -152,6 +185,52 @@ function liveElsewhere(
     if (pid !== null && pid !== undefined) ownPids.add(pid);
   }
   return sessionsLiveElsewhere(provider, ownPids);
+}
+
+/**
+ * A resume that goes elsewhere (resumeRedirect): to the agent running the
+ * session that continues it (the sender focuses it), into the background
+ * session it runs as (attached to, like its own row would), or nowhere with
+ * a notice when another terminal runs it. Nothing is launched otherwise.
+ */
+function redirectResume(
+  deps: Parameters<typeof launchStandaloneAgent>[0],
+  redirect: ResumeRedirect,
+  msg: Record<string, unknown>,
+  send: WsSend,
+  bypassPermissions: boolean,
+): void {
+  const sessionId = msg.sessionId as string;
+  console.log(
+    `[Pixel Agents] Resume: session ${sessionId.slice(0, 8)} continues as ${redirect.liveSessionId.slice(0, 8)} (${redirect.kind}), not resumed`,
+  );
+  if (redirect.kind === 'attach') {
+    const transcript =
+      redirect.transcript ??
+      transcriptOfSession(deps.provider, redirect.liveSessionId, undefined, undefined);
+    if (!transcript) return;
+    launchStandaloneAgent(deps, {
+      directoryPath: msg.directoryPath as string,
+      bypassPermissions,
+      palette: conversationLook(redirect.liveSessionId)?.palette,
+      resume: {
+        sessionId: redirect.liveSessionId,
+        transcript,
+        seatId: conversationLook(redirect.liveSessionId)?.seatId,
+        attach: redirect.backgroundId,
+      },
+    });
+    return;
+  }
+  if (redirect.kind === 'none') return;
+  const notice = resumeRedirectNotice(redirect);
+  send({
+    type: 'resumeRedirected',
+    sessionId,
+    liveSessionId: redirect.liveSessionId,
+    ...(redirect.kind === 'agent' ? { agentId: redirect.agentId } : {}),
+    ...(notice ? { notice } : {}),
+  });
 }
 
 /**
@@ -268,16 +347,25 @@ export function handleClientMessage(
       const { ptyManager } = ctx;
       if (!ptyManager || !conversationProvider) break;
       const remoteHosts = configuredRemoteHosts();
+      const directories = conversationDirectoriesFor(ctx);
+      // A /clear the office did not see (it was not running): inferred from
+      // the transcripts before they are listed.
+      const supersede = supersedeDepsOf(ctx);
+      if (supersede) {
+        supersede.superseded.prune((id) => sessionTranscriptExists(conversationProvider, id));
+        applyInferredLinks(supersede, directoryTranscripts(directories, conversationProvider));
+      }
       const reply = () =>
         send({
           type: 'conversationsLoaded',
           directories: listConversations(
-            conversationDirectoriesFor(ctx),
+            directories,
             conversationProvider,
             liveSessions(store),
             conversationLimitsFrom(msg.limits),
             liveElsewhere(store, ptyManager, conversationProvider),
             doneSessionsOf(conversationProvider),
+            supersededOf(ctx),
           ),
           ...(remoteHosts.length > 0
             ? { remoteHosts: remoteHostConversations(remoteHosts, store) }
@@ -319,6 +407,7 @@ export function handleClientMessage(
           query,
           liveElsewhere(store, ctx.ptyManager, conversationProvider),
           doneSessionsOf(conversationProvider),
+          supersededOf(ctx),
         ),
       });
       break;
@@ -342,26 +431,44 @@ export function handleClientMessage(
       resumesInFlight.add(sessionId);
       // Whether it runs in the background (attach, never resume) is asked of
       // the CLI anew: a resume beside a background session starts a copy.
+      const deps = { store, runtime, ptyManager, provider };
+      const bypassPermissions = adapter?.getSetting(KEY_BYPASS_PERMISSIONS, false) ?? false;
       void (provider.refreshLiveSessions?.() ?? Promise.resolve(false))
         .then(() => {
-          const resume = resumeRequest(store, provider, msg);
+          // The conversation continues as another session (a /clear left it
+          // behind, or its title runs under another id): go there instead of
+          // bringing back a session that is over.
+          const redirect = resumeRedirect(store, provider, msg, runtime.superseded);
+          if (redirect) {
+            redirectResume(deps, redirect, msg, send, bypassPermissions);
+            return;
+          }
+          const resume = resumeRequest(store, provider, msg, runtime.superseded);
           if (!resume) return;
-          launchStandaloneAgent(
-            { store, runtime, ptyManager, provider },
-            {
-              directoryPath: resume.directoryPath,
-              bypassPermissions: adapter?.getSetting(KEY_BYPASS_PERMISSIONS, false) ?? false,
-              palette: resume.look?.palette,
-              resume: {
-                sessionId: resume.sessionId,
-                transcript: resume.transcript,
-                seatId: resume.look?.seatId,
-                agentId: resume.agentId,
-                attach: resume.attach,
-                cwd: resume.cwd,
-              },
+          const options = {
+            directoryPath: resume.directoryPath,
+            bypassPermissions,
+            palette: resume.look?.palette,
+            resume: {
+              sessionId: resume.sessionId,
+              transcript: resume.transcript,
+              seatId: resume.look?.seatId,
+              agentId: resume.agentId,
+              attach: resume.attach,
+              cwd: resume.cwd,
             },
-          );
+          };
+          // A session nothing runs resumes in the CLI's background service
+          // (attached to, never a child of this server); one running in
+          // another terminal, a Headless agent's or a background one keeps
+          // its own path.
+          const runsSomewhere =
+            resume.attach !== undefined ||
+            resume.agentId !== undefined ||
+            liveElsewhere(store, ptyManager, provider).has(resume.sessionId);
+          return runsSomewhere
+            ? launchStandaloneAgent(deps, options)
+            : resumeInBackground(deps, options);
         })
         .finally(() => resumesInFlight.delete(sessionId));
       break;
@@ -869,6 +976,10 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
 
   // 5. Restore persisted external agents (standalone only; VS Code handles its own restore)
   runtime?.restoreExternalAgents();
+  // A restored agent may still be on a session a /clear left behind: move it
+  // to the session that continues it before the office is told of it.
+  const supersede = supersedeDepsOf(ctx);
+  if (supersede) reconcileSupersededAgents(supersede);
 
   // 6. Existing agents (either just restored, or from VS Code adapter if present)
   const agentIds: number[] = [];

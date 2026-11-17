@@ -102,6 +102,11 @@ export const CONVERSATION_TITLE_SCAN_BYTES = 256 * 1024;
  *  directory its session runs in (every user and assistant record carries
  *  `cwd`, so a short window finds one). */
 export const TRANSCRIPT_CWD_SCAN_BYTES = 64 * 1024;
+/** How much of a transcript's head and of its tail transcriptSpan reads. */
+export const TRANSCRIPT_SPAN_SCAN_BYTES = 64 * 1024;
+/** What a user record holds when it is the `/clear` command (the first one of
+ *  the transcript a `/clear` starts). */
+export const CLEAR_COMMAND_MARKER = '<command-name>/clear</command-name>';
 /** A title longer than this is cut, with an ellipsis. */
 export const CONVERSATION_TITLE_MAX_CHARS = 120;
 /** The /color name that resets a session's colour (no colour). */
@@ -135,6 +140,10 @@ export const CLAUDE_AGENTS_LIST_MAX_BYTES = 4 * 1024 * 1024;
 /** Start a session in the background service (`claude --bg`); it prints
  *  `backgrounded · <short id>` and returns. */
 export const CLAUDE_BACKGROUND_FLAG = '--bg';
+/** Continue a past session (its id follows). */
+export const CLAUDE_RESUME_FLAG = '--resume';
+/** Skip every permission prompt (the office's bypass posture). */
+export const CLAUDE_BYPASS_PERMISSIONS_FLAG = '--dangerously-skip-permissions';
 /** How long `claude --bg` may take (it starts the service when none runs). */
 export const CLAUDE_BACKGROUND_START_TIMEOUT_MS = 20_000;
 /** Asks of the session list for a just-started background session's full id,

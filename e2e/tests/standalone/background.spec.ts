@@ -220,6 +220,11 @@ test.describe('Standalone / background sessions', () => {
     // The first press only arms it: nothing is stopped.
     await skull.click();
     await expect(skull).toHaveAttribute('data-stop-phase', 'armed');
+    // It says what the second press does, where the user looks.
+    await expect(page.getByTestId('office-notice')).toHaveText(
+      'Press the skull again to stop this session',
+    );
+    await expect(card.getByTestId('agent-card-activity')).toHaveText('Press again to stop');
     await page.waitForTimeout(500);
     expect(mockBackgroundSessions(standalone.tmpHome)).toHaveLength(1);
     await expect(card).toHaveCount(1);

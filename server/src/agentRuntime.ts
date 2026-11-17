@@ -31,6 +31,7 @@ import {
   setDismissalTracker,
   setHookProvider as setFileWatcherHookProvider,
   setSubagentWatch,
+  setSupersededCheck,
   setTeammateRegisterCallback,
   setTeammateRemovalCallback,
   setTeamProvider,
@@ -44,6 +45,7 @@ import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { PathSet, pathsMatch } from './pathKey.js';
 import { SessionRouter } from './sessionRouter.js';
 import { SubagentWatch } from './subagentWatch.js';
+import type { SupersededSessions } from './supersededSessions.js';
 import { cancelPermissionTimer, cancelWaitingTimer, endQuietTurns } from './timerManager.js';
 import {
   endBackgroundSpawn,
@@ -90,6 +92,10 @@ export class AgentRuntime {
   /** Shadow-store watcher for unnamed background spawns (sub-agents). */
   readonly subagentWatch: SubagentWatch;
   private hookEventHandler: HookEventHandler;
+  /** The office's superseded transcripts (the standalone server sets them):
+   *  a `/clear` seen through the hooks is recorded there too, and adoption
+   *  skips a superseded session. */
+  superseded?: SupersededSessions;
   private lifecycleCallbacks: RuntimeLifecycleCallbacks = {};
 
   constructor(
@@ -106,6 +112,8 @@ export class AgentRuntime {
       setTeamProvider(provider.team);
     }
     setAgentRemovalCallback((id) => this.removeAgent(id));
+    // A superseded session is no agent: neither hooks nor scanners adopt it.
+    setSupersededCheck((sessionId) => this.superseded?.isSuperseded(sessionId) === true);
     setTeammateRemovalCallback((id) => this.removeTeammate(id, 'team-config'));
     // New-style teammates run their own sessions; registering routes their hook
     // events (PreToolUse, Stop, SessionEnd) directly to the teammate agent.
@@ -228,25 +236,10 @@ export class AgentRuntime {
         );
       },
       onSessionClear: (agentId, newSessionId, newTranscriptPath) => {
-        if (newTranscriptPath) {
-          this.knownJsonlFiles.add(newTranscriptPath);
-          reassignAgentToFile(
-            agentId,
-            newTranscriptPath,
-            this.store,
-            this.fileWatchers,
-            this.pollingTimers,
-            this.waitingTimers,
-            this.permissionTimers,
-            () => this.store.persist(),
-          );
-        }
-        const agent = this.store.get(agentId);
-        if (agent) {
-          this.unregisterAgent(agent.sessionId);
-          agent.sessionId = newSessionId;
-          this.registerAgent(agent.sessionId, agent.id);
-        }
+        const previous = this.store.get(agentId)?.sessionId;
+        this.reassignSession(agentId, newSessionId, newTranscriptPath);
+        // The session it left is superseded: no row of its own, no character.
+        if (previous) this.superseded?.record(previous, newSessionId);
       },
       onSessionResume: (transcriptPath) => {
         this.dismissalTracker.clearDismissal(transcriptPath);
@@ -291,6 +284,42 @@ export class AgentRuntime {
         }
       },
     });
+  }
+
+  /**
+   * Move agent `agentId` to session `newSessionId` (a `/clear`, or a
+   * `/resume` in the same process): its transcript becomes
+   * `newTranscriptPath` (when known), and hooks for the new session route to
+   * it while the old session's no longer do. Id, look, seat and card stay.
+   */
+  reassignSession(agentId: number, newSessionId: string, newTranscriptPath?: string): void {
+    const agent = this.store.get(agentId);
+    if (!agent) return;
+    const previous = agent.sessionId;
+    if (newTranscriptPath) {
+      // Still waiting for the old transcript to appear (a launch whose
+      // session never wrote one): the new one is watched from here on.
+      const waiting = this.jsonlPollTimers.get(agentId);
+      if (waiting) clearInterval(waiting);
+      this.jsonlPollTimers.delete(agentId);
+      this.knownJsonlFiles.add(newTranscriptPath);
+      reassignAgentToFile(
+        agentId,
+        newTranscriptPath,
+        this.store,
+        this.fileWatchers,
+        this.pollingTimers,
+        this.waitingTimers,
+        this.permissionTimers,
+        () => this.store.persist(),
+      );
+    }
+    // reassignAgentToFile already renamed the session after the file: the
+    // router still names the old one.
+    this.unregisterAgent(previous);
+    agent.sessionId = newSessionId;
+    this.registerAgent(newSessionId, agentId);
+    this.store.persist();
   }
 
   /** Register adapter-specific lifecycle callbacks. */

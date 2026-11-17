@@ -247,6 +247,64 @@ export function launchBackgroundAgent(
 }
 
 /**
+ * Resume a stopped session in the CLI's background service and attach a
+ * terminal to it, as + Agent does for a new one (launchBackgroundAgent), so
+ * the resumed session is never a child of this server: it outlives the
+ * terminal and the server. Claude: `claude --bg --resume <id>` (no bypass
+ * flag: on a session that ran in the background before, any flag makes the
+ * CLI start a copy under a new id), then `claude attach <short id>`. When
+ * the CLI cannot (an older one with no --bg, an untrusted folder), the
+ * session resumes in the terminal as before. Only for a session nothing runs:
+ * one in another terminal or a Headless agent's takes the terminal path
+ * (resumeRequest decides), and one in the background is attached to.
+ */
+export function resumeInBackground(
+  deps: LaunchStandaloneAgentDeps,
+  options: LaunchStandaloneAgentOptions & {
+    resume: NonNullable<LaunchStandaloneAgentOptions['resume']>;
+  },
+): number | null | Promise<number | null> {
+  const { provider, ptyManager, store } = deps;
+  const { resume } = options;
+  if (!ptyManager.isAvailable() || resume.attach || resume.agentId !== undefined) {
+    return launchStandaloneAgent(deps, options);
+  }
+  const cwd = resume.cwd ?? options.directoryPath ?? process.cwd();
+  const launch = provider.buildLaunchCommand?.('', cwd, {});
+  const starting = provider.startBackgroundSession?.(cwd, {
+    env: terminalEnv({ ...inheritedEnv(provider), ...launch?.env }),
+    resume: resume.sessionId,
+  });
+  if (!starting) return launchStandaloneAgent(deps, options);
+  return starting
+    .catch(() => null)
+    .then((background) => {
+      // The CLI could not: resume in the terminal, where it can ask.
+      if (!background) return launchStandaloneAgent(deps, options);
+      if (background.sessionId !== resume.sessionId) {
+        // It started a copy: that is what runs now, a session of its own.
+        return launchStandaloneAgent(deps, {
+          ...options,
+          resume: undefined,
+          background,
+        });
+      }
+      // One character per session: a Headless agent adopted from its hooks
+      // meanwhile takes the terminal.
+      const holder = [...store.values()].find((a) => a.sessionId === resume.sessionId);
+      if (holder && !holder.isExternal) return holder.id;
+      return launchStandaloneAgent(deps, {
+        ...options,
+        resume: {
+          ...resume,
+          attach: background.backgroundId,
+          ...(holder ? { agentId: holder.id, transcript: holder.jsonlFile } : {}),
+        },
+      });
+    });
+}
+
+/**
  * Bring back the agents whose terminals outlived the last server (only the
  * PTY host keeps them; in process there are none). Runs before the server
  * accepts connections, so the first office to connect already sees them —

@@ -21,6 +21,7 @@ import { setGhostHeadlessAgents as setRendererGhostHeadlessAgents } from '../off
 import { setFloorSprites } from '../office/floorTiles.js';
 import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js';
+import { showNotice } from '../office/notices.js';
 import { applyPendingAckMessage, clearPendingAck } from '../office/pendingAck.js';
 import { clearAgentSessionInfo, setAgentSessionInfo } from '../office/sessionLabel.js';
 import { setSessionMarks } from '../office/sessionMarks.js';
@@ -950,6 +951,10 @@ export function useExtensionMessages(
       } else if (msg.type === 'agentSessionStopFailed') {
         console.error(`[Webview] Could not stop agent ${msg.id}'s session: ${msg.reason}`);
         stopFailed(msg.id, msg.reason);
+      } else if (msg.type === 'resumeRedirected') {
+        // A pressed conversation runs elsewhere already: App goes to its
+        // agent (agentId); a terminal the office did not launch is said.
+        if (msg.notice) showNotice(msg.notice);
       }
     };
     const unsubscribe = transport.onMessage(handler);

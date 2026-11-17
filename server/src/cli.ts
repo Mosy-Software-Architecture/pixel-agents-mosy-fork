@@ -34,7 +34,10 @@ import {
   TERMINAL_DISABLED_BY_FLAG_REASON,
   WILDCARD_HOSTNAMES,
 } from './constants.js';
+import { directoryTranscripts } from './conversations.js';
+import { listDirectories } from './directories.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { hostDirectory } from './hostDirectory.js';
 import { enableClaudeAgentsList } from './providers/hook/claude/claude.js';
 import {
   claudeProvider,
@@ -44,6 +47,13 @@ import {
 } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
 import { watchSessionMarks } from './sessionMarks.js';
+import {
+  applyInferredLinks,
+  reconcileSupersededAgents,
+  sessionTranscriptExists,
+  SupersededSessions,
+  watchSupersededSessions,
+} from './supersededSessions.js';
 import {
   defaultPtyHostSocket,
   ptyHostLogFile,
@@ -333,6 +343,19 @@ async function main(): Promise<void> {
 
     // Create runtime first (before server.start, so we can pass it in)
     const runtime = new AgentRuntime(store, claudeProvider);
+    // Transcripts a /clear left behind, kept in standalone-state.json: no
+    // row of their own, no character (supersededSessions.ts).
+    runtime.superseded = new SupersededSessions({
+      load: () => adapter.loadSuperseded(),
+      save: (links) => adapter.saveSuperseded(links),
+    });
+    const supersede = {
+      store,
+      runtime,
+      provider: claudeProvider,
+      superseded: runtime.superseded,
+      terminals: ptyManager,
+    };
 
     // The saved list before anything rewrites it (restoreBackgroundAgents).
     const savedAgents = store.loadPersistedAgents();
@@ -357,6 +380,18 @@ async function main(): Promise<void> {
     // Which agents' sessions are marked done (their cards' check), and every
     // change to the marks file: broadcast to every office.
     const stopMarksWatch = watchSessionMarks(store, claudeProvider);
+    // A /clear while this server was not running: inferred from the
+    // transcripts now (and on each listing), and an agent still on a session
+    // it left moves to the one that continues it. Then every live process is
+    // watched for one that switches session (Claude Code 2.1.325 fires no
+    // hook on /clear).
+    runtime.superseded.prune((id) => sessionTranscriptExists(claudeProvider, id));
+    applyInferredLinks(
+      supersede,
+      directoryTranscripts(listDirectories([hostDirectory()]), claudeProvider),
+    );
+    reconcileSupersededAgents(supersede);
+    const stopSupersedeWatch = watchSupersededSessions(supersede);
 
     // Wire hook events: HTTP POST -> runtime -> hookEventHandler -> agents
     server.onHookEvent((providerId, event) => {
@@ -550,6 +585,7 @@ async function main(): Promise<void> {
       stopUsagePolling();
       stopBackgroundWatch();
       stopMarksWatch();
+      stopSupersedeWatch();
       // With the PTY host, stop, not dispose: the saved list keeps whoever is
       // still running, for the next server to reattach. In process every
       // terminal is gone, and the next server starts with no agents but the

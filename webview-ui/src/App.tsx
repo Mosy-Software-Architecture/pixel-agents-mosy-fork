@@ -14,6 +14,7 @@ import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { LoadingScene } from './components/LoadingScene.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { NoticeToast } from './components/NoticeToast.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { TerminalDrawer } from './components/TerminalDrawer.js';
 import { TerminalHideRibbon } from './components/TerminalHideRibbon.js';
@@ -480,6 +481,24 @@ function App() {
       handleCardSelect(agentId);
     },
     [handleCardSelect],
+  );
+
+  // A pressed conversation already continues as another session that an
+  // agent here runs (resumeRedirected): go to that agent, as its row would.
+  const openMobileAgent = mobileShell.openAgent;
+  const closeMenu = menu.close;
+  useEffect(
+    () =>
+      transport.onMessage((msg) => {
+        if (msg.type !== 'resumeRedirected' || msg.agentId === undefined) return;
+        if (isMobile) {
+          openMobileAgent(msg.agentId);
+          closeMenu();
+        } else {
+          openAgentFromSidebar(msg.agentId);
+        }
+      }),
+    [isMobile, openMobileAgent, closeMenu, openAgentFromSidebar],
   );
 
   const officeState = getOfficeState();
@@ -1004,6 +1023,8 @@ function App() {
       )}
 
       {/* Every conversation, searched (the sidebar's search field, "See all"). */}
+      <NoticeToast />
+
       <ConversationSearch
         scope={conversationSearch}
         onClose={() => setConversationSearch(null)}

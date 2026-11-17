@@ -18,6 +18,7 @@ import {
   launchBackgroundAgent,
   launchStandaloneAgent,
   restoreBackgroundAgents,
+  resumeInBackground,
 } from '../src/terminal/standaloneAgentLauncher.js';
 import { sessionMarkersUnset } from '../src/terminal/terminalEnv.js';
 import type { AgentState } from '../src/types.js';
@@ -551,6 +552,49 @@ describe('launchStandaloneAgent', () => {
 
       expect(id).not.toBeNull();
       expect(harness.spawnArgs[0].args[0]).toBe('--session-id');
+    });
+
+    it('a stopped session resumes in the background (`--bg --resume`, no bypass flag) and the terminal attaches', async () => {
+      const harness = workingPtyManager();
+      fs.writeFileSync(transcript, '{"type":"user"}\n');
+      const starts: Array<{ cwd: string; resume?: string; bypassPermissions?: boolean }> = [];
+      const id = await resumeInBackground(
+        {
+          store,
+          runtime,
+          ptyManager: harness.manager,
+          provider: inBackground({
+            startBackgroundSession: (cwd, opts) => {
+              starts.push({ cwd, resume: opts.resume, bypassPermissions: opts.bypassPermissions });
+              return Promise.resolve({ sessionId, backgroundId });
+            },
+          }),
+        },
+        { directoryPath: tempDir, bypassPermissions: true, resume: { sessionId, transcript } },
+      );
+
+      expect(starts).toEqual([{ cwd: tempDir, resume: sessionId, bypassPermissions: undefined }]);
+      expect(harness.spawnArgs[0].args).toEqual(['attach', backgroundId]);
+      expect(store.get(id!)).toMatchObject({ sessionId, jsonlFile: transcript, isExternal: false });
+    });
+
+    it('a resume falls back to the terminal (`--resume`) when the CLI cannot run it in the background', async () => {
+      const harness = workingPtyManager();
+      fs.writeFileSync(transcript, '{"type":"user"}\n');
+      const id = await resumeInBackground(
+        {
+          store,
+          runtime,
+          ptyManager: harness.manager,
+          provider: provider({
+            startBackgroundSession: () => Promise.reject(new Error('old CLI')),
+          }),
+        },
+        { directoryPath: tempDir, resume: { sessionId, transcript } },
+      );
+
+      expect(id).not.toBeNull();
+      expect(harness.spawnArgs[0].args.slice(0, 2)).toEqual(['--resume', sessionId]);
     });
 
     it('+ Agent stays synchronous where there is no background service', () => {

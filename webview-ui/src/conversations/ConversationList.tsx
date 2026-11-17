@@ -34,6 +34,7 @@ import {
   rowMark,
 } from './remote.js';
 import { rowWhere } from './subpath.js';
+import { rowPress, supersededLabel, supersededTitle } from './superseded.js';
 import { timeAgo } from './timeAgo.js';
 import { conversationTitleColor } from './titleColor.js';
 import { type ConversationLimits, useConversations } from './useConversations.js';
@@ -89,10 +90,11 @@ export function ConversationList({
 }: ConversationListProps) {
   /** What pressing a row does: one an agent with a terminal runs opens that
    *  agent; any other resumes here. */
-  const press = (conversation: Conversation, directory: DirectoryConversations) => () =>
-    goesToAgent(conversation)
-      ? onOpenAgent(conversation.agentId)
-      : onResume(conversation.sessionId, directory.path);
+  const press = (conversation: Conversation, directory: DirectoryConversations) => () => {
+    const action = rowPress(conversation, goesToAgent(conversation));
+    if (action.kind === 'agent') onOpenAgent(action.agentId);
+    else if (action.kind === 'resume') onResume(conversation.sessionId, directory.path);
+  };
   // Conversations per Directory beyond the default five ("Show more"):
   // forgotten when a section opens or shuts, and on reload.
   const [limits, setLimits] = useState<ConversationLimits>({});
@@ -429,7 +431,9 @@ function DirectorySection({
       </button>
       <Unfold open={expanded}>
         {/* A rule along the bottom: where its drawer ends. */}
-        {directory.conversations.length === 0 && !directory.doneHidden ? (
+        {directory.conversations.length === 0 &&
+        !directory.doneHidden &&
+        !directory.supersededHidden ? (
           <p className="m-0 px-10 py-4 border-b-2 border-border text-xs text-text-muted">
             No conversations
           </p>
@@ -559,7 +563,8 @@ export function ConversationRow({
   remoteHost,
   onToggleDone,
 }: RowProps) {
-  const { title, updatedAt, palette, repeat, agentId, liveElsewhere, done, subpath } = conversation;
+  const { title, updatedAt, palette, repeat, agentId, liveElsewhere, done, subpath, superseded } =
+    conversation;
   const mark = rowMark(conversation, remoteHost !== undefined, statusFor);
   // Settings → Show Directory Names off: no Directory line (one Directory says
   // nothing), and no subpath either.
@@ -571,17 +576,20 @@ export function ConversationRow({
       type="button"
       data-testid="conversation-row"
       data-done={done || undefined}
+      data-superseded={superseded ? 'true' : undefined}
       // aria-disabled, not disabled: the tooltip saying why must still show.
       aria-disabled={disabled || undefined}
       onClick={disabled ? undefined : onPress}
       title={
         remoteHost !== undefined
           ? remoteRowTitle(conversation, remoteHost)
-          : goesToAgent(conversation)
-            ? `Go to "${title}"`
-            : agentId !== undefined
-              ? `Open a terminal on "${title}" here`
-              : `Resume "${title}"`
+          : superseded
+            ? supersededTitle(superseded)
+            : goesToAgent(conversation)
+              ? `Go to "${title}"`
+              : agentId !== undefined
+                ? `Open a terminal on "${title}" here`
+                : `Resume "${title}"`
       }
       className={`w-full min-w-0 flex items-center gap-8 px-10 ${roomy ? 'py-8' : where ? 'py-3' : 'py-5'} bg-transparent border-none rounded-none text-left text-text ${disabled ? 'cursor-default' : 'cursor-pointer hover:bg-btn-bg'}`}
     >
@@ -628,6 +636,20 @@ export function ConversationRow({
             className="-mt-1 text-2xs text-text-muted overflow-hidden text-ellipsis whitespace-nowrap"
           >
             {where.text}
+          </span>
+        )}
+        {/* Left behind by a /clear: where it continues, in the done
+            check's pixel style (an arrow, then the short id). */}
+        {superseded && (
+          <span
+            data-testid="conversation-superseded"
+            title={supersededTitle(superseded)}
+            className="flex items-center gap-4 text-2xs text-text-muted overflow-hidden text-ellipsis whitespace-nowrap"
+          >
+            <span aria-hidden="true" className="shrink-0 flex">
+              <PixelIcon name="next" scale={1} />
+            </span>
+            <span className="overflow-hidden text-ellipsis">{supersededLabel(superseded)}</span>
           </span>
         )}
         {liveElsewhere && (

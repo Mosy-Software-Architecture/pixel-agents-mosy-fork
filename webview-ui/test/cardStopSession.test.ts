@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { stopMode, stopPress, stopTitle } from '../src/components/cardBar.js';
+import { stopActivity, stopMode, stopPress, stopTitle } from '../src/components/cardBar.js';
 import { STOP_SESSION_ARM_MS, STOP_SESSION_FAILED_SHOW_MS } from '../src/constants.js';
 import {
   backgroundSessionOf,
@@ -10,6 +10,7 @@ import {
   stopFailed,
   stopStateOf,
 } from '../src/office/backgroundSessions.js';
+import { currentNotice, dismissNotice } from '../src/office/notices.js';
 
 describe('stopMode: which cards show the skull', () => {
   it('only an agent whose session runs in the background, where this office may stop it', () => {
@@ -87,9 +88,22 @@ describe('the skull store', () => {
     expect(stopStateOf(1)?.phase).toBe('stopping');
   });
 
+  it('an armed skull says so: a notice and the card line ask for the second press', () => {
+    vi.useFakeTimers();
+    pressStop(1, vi.fn());
+    expect(currentNotice()?.text).toBe('Press the skull again to stop this session');
+    expect(stopActivity(stopStateOf(1)?.phase)).toBe('Press again to stop');
+    expect(stopActivity(undefined)).toBeUndefined();
+    vi.advanceTimersByTime(STOP_SESSION_ARM_MS + 1);
+    expect(currentNotice()).toBeNull();
+  });
+
   it('a failed stop shows its reason for a while, then rests', () => {
     vi.useFakeTimers();
     stopFailed(1, 'claude stop timed out');
+    expect(currentNotice()?.text).toBe('Could not stop the session: claude stop timed out');
+    dismissNotice();
+    expect(currentNotice()).toBeNull();
     expect(stopStateOf(1)).toEqual({ phase: 'failed', reason: 'claude stop timed out' });
     vi.advanceTimersByTime(STOP_SESSION_FAILED_SHOW_MS + 1);
     expect(stopStateOf(1)).toBeUndefined();

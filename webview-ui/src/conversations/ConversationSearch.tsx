@@ -14,6 +14,7 @@ import { transport } from '../transport/index.js';
 import { ConversationRow, type ConversationSearchScope } from './ConversationList.js';
 import { goesToAgent } from './liveElsewhere.js';
 import { remoteSearch } from './remote.js';
+import { rowPress } from './superseded.js';
 
 interface ConversationSearchProps {
   /** Where it searches when it opens; null = closed. */
@@ -244,7 +245,10 @@ function SearchBody({
               conversation={conversation}
               where={directory ? undefined : directoryName}
               onPress={() => {
-                if (goesToAgent(conversation)) onOpenAgent(conversation.agentId);
+                const action = rowPress(conversation, goesToAgent(conversation));
+                // A superseded one no agent continues: nothing to open.
+                if (action.kind === 'none') return;
+                if (action.kind === 'agent') onOpenAgent(action.agentId);
                 else onResume(conversation.sessionId, path);
                 onClose();
               }}

@@ -42,7 +42,7 @@ describe('Claude live sessions', () => {
       kind: 'interactive',
     });
     expect(liveSessions(dir)).toEqual([
-      { sessionId: 'abc', pid: process.pid, name: 'lead', status: 'idle' },
+      { sessionId: 'abc', pid: process.pid, name: 'lead', status: 'idle', cwd: '/work' },
     ]);
   });
 

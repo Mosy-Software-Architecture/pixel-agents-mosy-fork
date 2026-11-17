@@ -27,7 +27,14 @@ import {
 import { sessionMarkOf, subscribeSessionMarks } from '../office/sessionMarks.js';
 import { AgentCardLabel } from './AgentCardLabel.js';
 import type { CardVariant, CloseMode, StopPhase } from './cardBar.js';
-import { cardTitleLines, markMode, markTitle, stopMode, stopTitle } from './cardBar.js';
+import {
+  cardTitleLines,
+  markMode,
+  markTitle,
+  stopActivity,
+  stopMode,
+  stopTitle,
+} from './cardBar.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { STATUS_DOT } from './statusDot.js';
 import { Button } from './ui/Button.js';
@@ -148,7 +155,7 @@ export function AgentCard({
           name={sessionName(agentId, session?.title)}
           color={sessionColor(session?.color)}
           host={remoteHostLabel(session)}
-          activity={activity}
+          activity={stopActivity(stopState?.phase) ?? activity}
           width={AGENT_CARD_LABEL_WIDTH_PX}
           done={done ? <PixelIcon name="check" scale={1} /> : undefined}
         />

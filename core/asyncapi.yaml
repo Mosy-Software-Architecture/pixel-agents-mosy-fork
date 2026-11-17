@@ -138,6 +138,7 @@ components:
         # Background sessions (stop one from its card)
         - $ref: '#/components/schemas/AgentBackgroundSessions'
         - $ref: '#/components/schemas/AgentSessionStopFailed'
+        - $ref: '#/components/schemas/ResumeRedirected'
         # Done marks (session-marks.json)
         - $ref: '#/components/schemas/AgentSessionMarks'
         # Diagnostics
@@ -1201,6 +1202,14 @@ components:
             is marked done (Conversation.done). They count neither toward the
             listed ones nor toward `more`; the search (searchConversations)
             still finds them. Absent when none.
+        supersededHidden:
+          type: integer
+          description: >-
+            How many of its conversations were left out because their session
+            is superseded (Conversation.superseded: a `/clear` left it behind
+            and another session continues it). They count neither toward the
+            listed ones nor toward `more`; the search still finds them. Absent
+            when none.
 
     ConversationSearchResults:
       description: >-
@@ -1303,6 +1312,34 @@ components:
             prompt came after the mark. The sidebar's lists leave such a
             conversation out (DirectoryConversations.doneHidden counts them);
             the search lists it with a check in front of its title. Absent
+            otherwise.
+        superseded:
+          $ref: '#/components/schemas/SupersededBy'
+
+    SupersededBy:
+      description: >-
+        The conversation's session was left behind by a `/clear` (or a
+        `/resume` in the same process): the process went on as another
+        session, which continues it. Its transcript is no agent of its own:
+        the sidebar's lists leave it out (DirectoryConversations.supersededHidden
+        counts it), the search lists it labelled "cleared → continues in
+        <short id>", and pressing it goes to the agent running the session
+        that continues it, never resuming anything.
+      type: object
+      additionalProperties: false
+      required: [sessionId]
+      properties:
+        sessionId:
+          type: string
+          description: The session that continues it (the newest, after several clears).
+        agentId:
+          type: integer
+          description: The agent in the office running that session; absent when none does.
+        inferred:
+          type: boolean
+          description: >-
+            The link was inferred from the transcripts (the office was not
+            running when the session was cleared), not seen happen. Absent
             otherwise.
 
     RemoteKind:
@@ -1529,6 +1566,35 @@ components:
         reason:
           type: string
           description: Why, in the CLI's words when it gave any (its first line).
+
+    ResumeRedirected:
+      description: >-
+        A resumeConversation its sender asked for was not run because the
+        conversation already continues elsewhere: its session is superseded
+        (a `/clear` left it behind), or a running session carries its title
+        under another id. Pressing the row goes there instead: to the agent
+        running it in the office (`agentId`; the client focuses it), or, when
+        it runs in a terminal the office did not launch, the client shows
+        `notice`. A background session is attached to instead and needs no
+        answer. Sent to the sender only.
+      type: object
+      additionalProperties: false
+      required: [type, sessionId, liveSessionId]
+      properties:
+        type:
+          const: resumeRedirected
+        sessionId:
+          type: string
+          description: The session the sender asked to resume.
+        liveSessionId:
+          type: string
+          description: The session that continues it, running right now.
+        agentId:
+          type: integer
+          description: The agent in the office running it.
+        notice:
+          type: string
+          description: What to tell the user, when no agent in the office runs it.
 
     # ── Client message variants ────────────────────────────────────
 

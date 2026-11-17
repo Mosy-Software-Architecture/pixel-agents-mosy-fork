@@ -36,6 +36,10 @@ interface AdapterState {
   agents: PersistedAgent[];
   seats: Record<string, { palette?: number; repeat?: number; seatId?: string }>;
   cardOrder: number[];
+  /** Superseded transcripts (supersededSessions.ts parses them). Kept as
+   *  read: an older build that rewrites the file drops it, which only
+   *  forgets which past transcripts a /clear left behind. */
+  superseded?: Record<string, unknown>;
 }
 
 const EMPTY_STATE: AdapterState = { agents: [], seats: {}, cardOrder: [] };
@@ -101,6 +105,14 @@ export class FileStateAdapter implements StateAdapter {
     this.patchState({ cardOrder: order });
   }
 
+  loadSuperseded(): unknown {
+    return this.readState().superseded ?? {};
+  }
+
+  saveSuperseded(superseded: Record<string, unknown>): void {
+    this.patchState({ superseded });
+  }
+
   // ── Internal state-file I/O ─────────────────────────────────
 
   private readState(): AdapterState {
@@ -117,6 +129,9 @@ export class FileStateAdapter implements StateAdapter {
             ? (parsed.seats as AdapterState['seats'])
             : {},
         cardOrder: parseCardOrder(parsed.cardOrder) ?? [],
+        ...(parsed.superseded && typeof parsed.superseded === 'object'
+          ? { superseded: parsed.superseded as Record<string, unknown> }
+          : {}),
       };
     } catch (err) {
       console.error('[Pixel Agents] Failed to read adapter state:', err);

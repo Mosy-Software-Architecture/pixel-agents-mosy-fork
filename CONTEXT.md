@@ -37,6 +37,10 @@ _Avoid_: daemon session, detached agent
 A session the user (or a tool acting for them: feature-flow, the `agent` CLI) called finished, recorded in the CLI's marks file (Claude Code: `$CLAUDE_CONFIG_DIR/session-marks.json`, shared by every tool that marks). A done conversation leaves the sidebar's lists and shows only under See all and in search, with a green check before its title; a live agent whose session is marked shows the check on its card. The mark holds until the user sends the session another prompt (a tool result, a local command or a background notice does not count); from then on it is void, whatever the file says. Not the Done status, which is a finished turn.
 _Avoid_: archived, closed, "done" alone
 
+**Superseded transcript**:
+The transcript of a session that a `/clear` (or a `/resume` in the same process) left behind: the process went on as another session, which continues the conversation. It is no Agent and no conversation of its own: the sidebar leaves it out of Recent and By Directory, See all and search label it "cleared → continues in <short id>", and pressing it goes to the agent running the session that continues it (or does nothing), never resuming it. The agent that ran it moves to the new session (same character, seat and card). The office sees the switch in the CLI's registry of running processes, or infers it from the transcripts when it was not running (`inferred`); the links live in the office's saved state.
+_Avoid_: cleared session (for the new one), old session, stale transcript
+
 **Character**:
 The animated pixel-art figure representing an agent in the office. An agent has a status and a session; its character has a position and an animation state.
 _Avoid_: avatar, sprite (a sprite is the image asset, not the figure)

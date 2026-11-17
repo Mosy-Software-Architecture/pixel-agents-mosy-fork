@@ -26,6 +26,7 @@ import {
 import { transcriptSuffix } from './directorySuggestions.js';
 import { writeJsonAtomic } from './jsonFileWatcher.js';
 import { toPathKey } from './pathKey.js';
+import type { ListedTranscript, Successor, SupersededSessions } from './supersededSessions.js';
 import type { AgentState } from './types.js';
 
 /**
@@ -344,6 +345,7 @@ export function resumeRequest(
   store: AgentStateStore,
   provider: HookProvider,
   msg: { sessionId?: unknown; directoryPath?: unknown },
+  superseded?: SupersededSessions,
 ): ResumeRequest | null {
   if (!provider.conversationTitle || !provider.buildLaunchCommand) return null;
   const { sessionId, directoryPath } = msg;
@@ -355,6 +357,9 @@ export function resumeRequest(
   if (holders.length > 0 && !headless) return null;
   const transcript = findTranscript(provider, directoryPath, sessionId);
   if (!transcript) return null;
+  // It continues elsewhere (superseded, or its title runs under another id):
+  // resuming it would bring back a session that is over (resumeRedirect).
+  if (resumeRedirect(store, provider, msg, superseded)) return null;
   const attach = backgroundIdOf(provider, sessionId);
   const cwd = resumeCwd(provider, directoryPath, transcript);
   return {
@@ -366,6 +371,90 @@ export function resumeRequest(
     ...(attach ? { attach } : {}),
     ...(cwd ? { cwd } : {}),
   };
+}
+
+/** Where a resume goes instead (resumeRedirect): the conversation continues
+ *  as session `liveSessionId`. */
+export type ResumeRedirect =
+  /** An agent in the office runs it: the client goes to that agent. */
+  | { kind: 'agent'; liveSessionId: string; agentId: number }
+  /** It runs in the CLI's background service: attach to it. */
+  | { kind: 'attach'; liveSessionId: string; backgroundId: string; transcript?: string }
+  /** It runs in a terminal the office did not launch, under `name`. */
+  | { kind: 'elsewhere'; liveSessionId: string; name?: string }
+  /** It is superseded and nothing runs what continues it: nothing to do. */
+  | { kind: 'none'; liveSessionId: string };
+
+/**
+ * Whether resuming `msg.sessionId` must go somewhere else instead, because
+ * the conversation already continues as another session: its session is
+ * superseded (a `/clear` left it behind, supersededSessions.ts), or, while it
+ * runs nowhere itself, a running session (HookProvider.liveSessions: the
+ * CLI's registry and its background service) carries its title (the user's
+ * own name for it) under another id, in the same working directory when both
+ * record one. A second `claude --resume` of the old id beside it would bring
+ * back a conversation that is over. Null: resume as asked.
+ */
+export function resumeRedirect(
+  store: AgentStateStore,
+  provider: HookProvider,
+  msg: { sessionId?: unknown; directoryPath?: unknown },
+  superseded?: SupersededSessions,
+): ResumeRedirect | null {
+  const { sessionId, directoryPath } = msg;
+  if (typeof sessionId !== 'string' || !SESSION_ID_PATTERN.test(sessionId)) return null;
+  if (typeof directoryPath !== 'string') return null;
+  const live = provider.liveSessions?.() ?? [];
+  const successor = superseded?.successorOf(sessionId)?.sessionId;
+  let target = successor;
+  if (target === undefined) {
+    if (live.some((s) => s.sessionId === sessionId)) return null;
+    const transcript = findTranscript(provider, directoryPath, sessionId);
+    if (!transcript) return null;
+    const info = provider.sessionInfo?.(transcript);
+    if (!info?.titleIsUsers || !info.title) return null;
+    const cwd = provider.transcriptCwd?.(transcript);
+    target = live.find(
+      (s) =>
+        s.sessionId !== sessionId &&
+        s.name === info.title &&
+        (!s.cwd || !cwd || path.resolve(s.cwd) === path.resolve(cwd)),
+    )?.sessionId;
+    if (target === undefined) return null;
+  }
+  const holder = [...store.values()].find(
+    (agent) => agent.sessionId === target && runsOwnSession(agent, store),
+  );
+  if (holder) return { kind: 'agent', liveSessionId: target, agentId: holder.id };
+  const background = live.find(
+    (s) => s.sessionId === target && s.kind === 'background' && s.backgroundId,
+  );
+  if (background?.backgroundId) {
+    const transcript = findTranscript(provider, directoryPath, target);
+    return {
+      kind: 'attach',
+      liveSessionId: target,
+      backgroundId: background.backgroundId,
+      ...(transcript ? { transcript } : {}),
+    };
+  }
+  const elsewhere = live.find((s) => s.sessionId === target);
+  if (elsewhere) {
+    return {
+      kind: 'elsewhere',
+      liveSessionId: target,
+      ...(elsewhere.name ? { name: elsewhere.name } : {}),
+    };
+  }
+  return { kind: 'none', liveSessionId: target };
+}
+
+/** What the client is told when a resume went elsewhere (resumeRedirected). */
+export function resumeRedirectNotice(redirect: ResumeRedirect): string | undefined {
+  if (redirect.kind !== 'elsewhere') return undefined;
+  return redirect.name
+    ? `Already running as "${redirect.name}" in another terminal`
+    : 'Already running in another terminal';
 }
 
 /** A transcript as the listing sees it. */
@@ -550,9 +639,11 @@ function conversationOf(
   elsewhere: ReadonlyMap<string, LiveElsewhere>,
   done: ReadonlyMap<string, number>,
   subpath?: string,
+  superseded: ReadonlyMap<string, Successor> = new Map(),
 ): Conversation | null {
   const sessionId = path.basename(file.path, transcriptSuffix(provider.sessionFilePattern));
   const running = live.get(sessionId);
+  const successor = superseded.get(sessionId);
   const label = cachedLabel(provider, file);
   const title = label.title ?? (running && NEW_CONVERSATION_TITLE);
   if (!title) return null;
@@ -569,6 +660,17 @@ function conversationOf(
     ...(running?.headless ? { headless: true } : {}),
     liveElsewhere: elsewhere.get(sessionId),
     ...(done.has(sessionId) ? { done: true } : {}),
+    ...(successor
+      ? {
+          superseded: {
+            sessionId: successor.sessionId,
+            ...(live.get(successor.sessionId)
+              ? { agentId: live.get(successor.sessionId)!.agentId }
+              : {}),
+            ...(successor.inferred ? { inferred: true } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -602,7 +704,10 @@ function clampLimit(count: number): number {
  * marked done (`done`, HookProvider.sessionMarks) is left out, counted in
  * `doneHidden` and in neither the cap nor `more`: the search still finds it.
  * A Directory's list takes in the sessions filed below it (placedTranscripts),
- * each with its `subpath`.
+ * each with its `subpath`. One superseded by another session (`superseded`,
+ * supersededSessions.ts: a `/clear` left it behind) is no conversation of its
+ * own while it runs nowhere: left out like a done one, counted in
+ * `supersededHidden`.
  */
 export function listConversations(
   directories: readonly Directory[],
@@ -611,6 +716,7 @@ export function listConversations(
   limits: ReadonlyMap<string, number> = new Map(),
   elsewhere: ReadonlyMap<string, LiveElsewhere> = new Map(),
   done: ReadonlyMap<string, number> = new Map(),
+  superseded: ReadonlyMap<string, Successor> = new Map(),
 ): DirectoryConversations[] {
   const looks = readLooks();
   const found = new Set<string>();
@@ -621,15 +727,23 @@ export function listConversations(
     const conversations: Conversation[] = [];
     let more = false;
     let doneHidden = 0;
+    let supersededHidden = 0;
     for (const file of placed[index]) {
       found.add(file.path);
-      const isDone = done.has(path.basename(file.path, suffix));
+      const sessionId = path.basename(file.path, suffix);
+      const isSuperseded = superseded.has(sessionId) && !live.has(sessionId);
+      const isDone = done.has(sessionId);
       // Past the cap, titles are read only until one says there are more.
-      if (!isDone && more) continue;
+      if (!isDone && !isSuperseded && more) continue;
       const subpath = subpathOf(file, directory, provider);
       if (subpath === null) continue;
       const conversation = () =>
-        conversationOf(file, provider, live, looks, elsewhere, done, subpath);
+        conversationOf(file, provider, live, looks, elsewhere, done, subpath, superseded);
+      if (isSuperseded) {
+        // Not an agent: what continues it is listed instead.
+        if (conversation()) supersededHidden++;
+        continue;
+      }
       if (isDone) {
         if (conversation()) doneHidden++;
         continue;
@@ -647,6 +761,7 @@ export function listConversations(
       conversations,
       ...(more ? { more } : {}),
       ...(doneHidden > 0 ? { doneHidden } : {}),
+      ...(supersededHidden > 0 ? { supersededHidden } : {}),
     };
   });
   pruneCaches(found);
@@ -691,7 +806,8 @@ export function titleMatches(title: string, query: string): boolean {
  * The conversations whose title matches `query` (titleMatches), across every
  * Directory or the one asked for, newest first, at most `limit`; `more`: at
  * least one more matches. A session listed under two Directories counts once.
- * Done ones are found too, with `done` (the sidebar's lists leave them out).
+ * Done ones are found too, with `done` (the sidebar's lists leave them out),
+ * and so are superseded ones, with `superseded`.
  * Sessions filed below a Directory are its, as in listConversations.
  */
 export function searchConversations(
@@ -701,6 +817,7 @@ export function searchConversations(
   { query, directoryPath, limit }: ConversationQuery,
   elsewhere: ReadonlyMap<string, LiveElsewhere> = new Map(),
   done: ReadonlyMap<string, number> = new Map(),
+  superseded: ReadonlyMap<string, Successor> = new Map(),
 ): { results: FoundConversation[]; more: boolean } {
   const looks = readLooks();
   const placed = placedTranscripts(directories, provider);
@@ -713,7 +830,16 @@ export function searchConversations(
   for (const { file, directory } of files) {
     const subpath = subpathOf(file, directory, provider);
     if (subpath === null) continue;
-    const conversation = conversationOf(file, provider, live, looks, elsewhere, done, subpath);
+    const conversation = conversationOf(
+      file,
+      provider,
+      live,
+      looks,
+      elsewhere,
+      done,
+      subpath,
+      superseded,
+    );
     if (!conversation || sessions.has(conversation.sessionId)) continue;
     if (!titleMatches(conversation.title, query)) continue;
     if (results.length === limit) return { results, more: true };
@@ -721,6 +847,18 @@ export function searchConversations(
     results.push({ directoryPath: directory.path, directoryName: directory.name, conversation });
   }
   return { results, more: false };
+}
+
+/** Every transcript the Directories' lists draw from (placedTranscripts),
+ *  each once: what a `/clear` the office did not see is inferred from. */
+export function directoryTranscripts(
+  directories: readonly Directory[],
+  provider: HookProvider,
+): ListedTranscript[] {
+  const seen = new Set<string>();
+  return placedTranscripts(directories, provider)
+    .flat()
+    .filter((file) => !seen.has(file.path) && seen.add(file.path) !== undefined);
 }
 
 /** A project dir's transcripts: its files ending in `suffix`. */

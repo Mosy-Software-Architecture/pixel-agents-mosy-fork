@@ -396,7 +396,78 @@ async function emitHook(homeDir, context, payload) {
   }
 }
 
+// ── The CLI's registry of running processes (~/.claude/sessions/<pid>.json) ──
+//
+// Written only when a scenario asks (`registerSession`), as Claude Code
+// 2.1.325 writes it: pid, session id, cwd, name, start time; a background
+// worker's entry is `kind: "bg"` with its short id. A `/clear` (the `clear`
+// action) keeps the process and switches the entry to a new session.
+
+function registryPath(homeDir) {
+  return path.join(homeDir, '.claude', 'sessions', `${process.pid}.json`);
+}
+
+function writeRegistryEntry(homeDir, scenario, context) {
+  const entry = {
+    pid: process.pid,
+    sessionId: context.sessionId,
+    cwd: context.cwd,
+    startedAt: REGISTRY_STARTED_AT,
+    kind: WORKER_SHORT_ID ? 'bg' : 'interactive',
+    ...(WORKER_SHORT_ID ? { jobId: WORKER_SHORT_ID } : {}),
+    ...(scenario.registry && scenario.registry.name ? { name: scenario.registry.name } : {}),
+    status: 'idle',
+  };
+  writeJsonFile(registryPath(homeDir), entry);
+}
+
+function registerSession(homeDir, scenario, context) {
+  if (!scenario.registry) return;
+  writeRegistryEntry(homeDir, scenario, context);
+  process.on('exit', () => {
+    try {
+      fs.rmSync(registryPath(homeDir), { force: true });
+    } catch {
+      // Gone already.
+    }
+  });
+  logAction(homeDir, `registry ${process.pid} session=${context.sessionId}`);
+}
+
+/** `/clear`: the same process goes on as a new session, with a new transcript
+ *  that starts with its title and the `/clear` command (Claude Code 2.1.325;
+ *  no SessionEnd or SessionStart hook fires). */
+function clearSession(homeDir, scenario, context, atMs) {
+  const from = context.sessionId;
+  const to = require('crypto').randomUUID();
+  const transcriptPath = path.join(context.projectDir, `${to}.jsonl`);
+  const name = scenario.registry && scenario.registry.name;
+  if (name) appendJsonl(transcriptPath, { type: 'custom-title', customTitle: name, sessionId: to });
+  appendJsonl(transcriptPath, {
+    type: 'user',
+    message: { role: 'user', content: '<command-name>/clear</command-name>' },
+    timestamp: new Date().toISOString(),
+    cwd: context.cwd,
+    sessionId: to,
+  });
+  context.sessionId = to;
+  context.transcriptPath = transcriptPath;
+  context.sessions.self = { ...context.sessions.self, sessionId: to, transcriptPath };
+  if (scenario.registry) writeRegistryEntry(homeDir, scenario, context);
+  if (WORKER_SHORT_ID) {
+    writeBackgroundRegistry(
+      homeDir,
+      readBackgroundRegistry(homeDir).map((entry) =>
+        entry.sessionId === from ? { ...entry, sessionId: to } : entry,
+      ),
+    );
+  }
+  logAction(homeDir, `clear ${from} -> ${to}`);
+  echo(atMs, `${ANSI_CYAN}/clear${ANSI_RESET} session ${shortId(from)} -> ${shortId(to)}`);
+}
+
 async function playScenario(homeDir, scenario, context) {
+  registerSession(homeDir, scenario, context);
   for (const [alias, session] of Object.entries(context.sessions)) {
     if (!session.sidecarPath || session.sidecarJson === undefined) {
       continue;
@@ -477,6 +548,11 @@ async function playScenario(homeDir, scenario, context) {
       continue;
     }
 
+    if (action.kind === 'clear') {
+      clearSession(homeDir, scenario, context, atMs);
+      continue;
+    }
+
     if (action.kind === 'exit') {
       logAction(homeDir, `exit code=${action.code || 0}`);
       echo(atMs, `exit code=${action.code || 0}`);
@@ -506,6 +582,13 @@ async function playScenario(homeDir, scenario, context) {
 // does not know answers as the real one does (stderr, exit 1).
 
 const BACKGROUND_WORKER_FLAG = '--mock-bg-worker';
+/** This process's start time, as the registry records it. */
+const REGISTRY_STARTED_AT = Date.now();
+/** The short id of the background session this process plays, if a worker. */
+const WORKER_SHORT_ID =
+  process.argv[2] === BACKGROUND_WORKER_FLAG && process.argv[3]
+    ? process.argv[3].slice(0, 8)
+    : undefined;
 const ENTER_ALT_SCREEN = '\x1b[?1049h';
 const LEAVE_ALT_SCREEN = '\x1b[?1049l';
 const BACKGROUND_POLL_MS = 200;
@@ -570,12 +653,18 @@ function startBackground(homeDir, cwd, args) {
     process.exitCode = 1;
     return;
   }
-  const sessionId = require('crypto').randomUUID();
+  // `--bg --resume <id>` continues that session under its own id (a bare
+  // resume, as the office runs it; Claude Code starts a copy only when flags
+  // come with it).
+  const resumeAt = args.indexOf('--resume');
+  const sessionId =
+    resumeAt >= 0 && args[resumeAt + 1] ? args[resumeAt + 1] : require('crypto').randomUUID();
   const shortId = sessionId.slice(0, 8);
   const out = fs.openSync(backgroundOutputPath(homeDir, shortId), 'a');
+  const workerArgs = args.filter((a, i) => a !== '--bg' && i !== resumeAt && i !== resumeAt + 1);
   const worker = spawn(
     process.execPath,
-    [__filename, BACKGROUND_WORKER_FLAG, sessionId, ...args.filter((a) => a !== '--bg')],
+    [__filename, BACKGROUND_WORKER_FLAG, sessionId, ...workerArgs],
     { cwd, env: process.env, detached: true, stdio: ['ignore', out, out] },
   );
   worker.unref();
