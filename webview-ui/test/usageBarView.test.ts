@@ -127,7 +127,9 @@ describe('usageBarSpecs', () => {
     const bars = usageBarSpecs(ENDPOINT_LIMITS, NOW);
     expect(bars).toHaveLength(2);
     expect(bars[0]).toMatchObject({ kind: 'weekly', name: 'Weekly', view: { percent: '21%' } });
-    expect(bars[1]).toEqual({
+    const { pace, ...fable } = bars[1];
+    expect(pace).toMatchObject({ used: 0.43 }); // a model's share is paced like the week
+    expect(fable).toEqual({
       key: 'weekly_scoped:Fable',
       name: 'Fable',
       kind: 'extra',

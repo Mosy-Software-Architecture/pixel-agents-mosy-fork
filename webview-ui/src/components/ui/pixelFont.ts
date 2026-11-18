@@ -31,8 +31,10 @@ export const GLYPHS: Record<string, readonly string[]> = {
   D: ['##.', '#.#', '#.#', '#.#', '##.'],
   E: ['###', '#..', '##.', '#..', '###'],
   F: ['###', '#..', '##.', '#..', '#..'],
-  // The rest of the capitals the month names and "NOW" need ("OCT 13").
+  // The rest of the capitals the month names and "NOW" need ("OCT 13"), and
+  // the weekdays on the usage bars ("MO" … "SU").
   G: ['###', '#..', '#.#', '#.#', '###'],
+  H: ['#.#', '#.#', '###', '#.#', '#.#'],
   J: ['..#', '..#', '..#', '#.#', '###'],
   L: ['#..', '#..', '#..', '#..', '###'],
   M: ['#...#', '##.##', '#.#.#', '#...#', '#...#'],

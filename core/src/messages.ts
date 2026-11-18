@@ -456,9 +456,21 @@ export interface UsagePlanWindow {
   usedPercentOfWeekly?: number;
   allowancePercentOfWeekly?: number;
   locked?: boolean;
+  daily?: UsageDailyHistory;
 }
 
 export type UsagePlanWindowGroup = 'session' | 'weekly' | 'scoped' | 'overage';
+
+export interface UsageDailyHistory {
+  since: number;
+  usedBefore: number;
+  days: UsageDay[];
+}
+
+export interface UsageDay {
+  dayStart: number;
+  used: number;
+}
 
 export type UsageEndpointStatus = 'ok' | 'offline' | 'unauthorized';
 

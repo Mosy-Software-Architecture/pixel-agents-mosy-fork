@@ -92,6 +92,7 @@ export {
   SERVER_JSON_NAME,
   TASK_DESCRIPTION_DISPLAY_MAX_LENGTH,
   USAGE_API_PREFIX,
+  USAGE_WEEK_MS,
 } from '../../core/src/constants.js';
 
 // ── Multi-Server Discovery ──────────────────────────────────
@@ -221,6 +222,15 @@ export const USAGE_POLL_INTERVAL_MS = 60_000;
 /** While the endpoint's last answer is younger than this, it decides which
  *  windows exist: a status line report cannot add a window it did not list. */
 export const USAGE_ENDPOINT_FRESH_MS = 3 * 60_000;
+/** A weekly or scoped window's history (the usage bars' days): an unchanged
+ *  value is sampled at most this often; a changed one always is. */
+export const USAGE_HISTORY_MIN_GAP_MS = 5 * 60_000;
+/** At most this many samples per window; past it, samples that are not the
+ *  last of their day go first (the days read the same without them). */
+export const USAGE_HISTORY_MAX_SAMPLES = 2500;
+/** Two `resetsAt` this close are the same window (anything further apart
+ *  starts a fresh history). */
+export const USAGE_HISTORY_SAME_WINDOW_MS = 60 * 60_000;
 
 // ── Avatar Customization ────────────────────────────────────
 /** The character profiles agents are drawn from, in the persistence dir (shared by both surfaces). */
