@@ -12,6 +12,10 @@ export const HOOK_API_PREFIX = '/api/hooks';
 /** Path prefix for a provider's account usage reports (`/api/usage/:providerId`),
  *  sent by the status line bridge. Bearer-authenticated like the hook route. */
 export const USAGE_API_PREFIX = '/api/usage';
+/** Length of a weekly usage window (and of a model's share of it, which resets
+ *  with it). The usage endpoint gives only `resetsAt`, never a start, so the
+ *  window is taken to be the 7 days before its reset: start = resetsAt - this. */
+export const USAGE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 export const SERVER_JSON_DIR = '.pixel-agents';
 export const SERVER_JSON_NAME = 'server.json';
 export const HOOK_SCRIPTS_DIR = '.pixel-agents/hooks';

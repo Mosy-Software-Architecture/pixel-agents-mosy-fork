@@ -1,9 +1,11 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 
 import type { UsageLimits } from '../../../core/src/messages.js';
+import { GLYPH_HEIGHT, glyphRects } from '../components/ui/pixelFont.js';
 import { PixelText } from '../components/ui/PixelText.js';
 import {
   CONTEXT_GAUGE_COLOR_YELLOW,
+  PIXEL_ICON_SCALE,
   USAGE_BAR_HEIGHT_PX,
   USAGE_BAR_TICK_MS,
   USAGE_BAR_WIDTH_PX,
@@ -19,6 +21,7 @@ import {
   usageBarSpecs,
   type UsageBarView,
 } from './usageBarView.js';
+import { type WeekPace, weekPaceLayout } from './weekPace.js';
 
 type Fill = Record<UsageBarView['level'], string>;
 
@@ -38,6 +41,22 @@ const FIVE_HOUR_FILL: Fill = {
   low: 'var(--color-danger)',
   unknown: 'transparent',
 };
+
+/** The pace drawing's colours (palette tokens): day separators and labels
+ *  dark on the fill and grey on the empty part; the marker green on pace and
+ *  orange ahead of it, the gap between it and the fill orange too. */
+const PACE_COLORS = {
+  onFill: 'var(--color-bg-dark)',
+  separatorEmpty: 'var(--color-border)',
+  labelEmpty: 'var(--color-text-muted-solid)',
+  onPace: 'var(--color-status-success)',
+  ahead: 'var(--color-warning)',
+  markerEdge: 'var(--color-bg-dark)',
+};
+/** How strongly the ahead-of-pace gap is tinted (a flat colour, no gradient). */
+const PACE_GAP_OPACITY = 0.4;
+/** Left padding before the share-left number inside a bar (`pl-4`). */
+const BAR_TEXT_LEFT_PX = 4;
 
 /** One bar as drawn: what it shows, and its colours. */
 interface Bar extends UsageBarSpec {
@@ -65,8 +84,92 @@ function useNow(intervalMs: number): number {
 
 /** What hovering a bar says: "Weekly · resets in 3d 11h",
  *  "Fable · 22% of the weekly budget used, 50% allowed · resets in 1d 5h". */
-function hoverText({ name, view }: Bar): string {
-  return [name, view.detail, view.reset].filter(Boolean).join(' · ');
+function hoverText({ name, view, pace }: Bar): string {
+  return [name, view.detail, view.reset, pace?.paceText].filter(Boolean).join(' · ');
+}
+
+/** A bar's tooltip: what else is known, then its pace and days. */
+function barTitle({ view, pace }: Bar): string | undefined {
+  const lines = [view.detail, pace?.summary, ...(pace?.dayLines ?? [])].filter(Boolean);
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
+/**
+ * The days and the pace marker over a bar (weekPace.ts), in whole CSS pixels:
+ * dashed 1-px separators between days, each day's two capitals in the pixel
+ * font where they fit, the ahead-of-pace gap, and the marker, one pixel wide
+ * with a dark pixel each side, reaching over the bar's border.
+ */
+function PaceOverlay({ pace, percent }: { pace: WeekPace; percent: string }) {
+  const width = USAGE_BAR_WIDTH_PX;
+  const height = USAGE_BAR_HEIGHT_PX;
+  const reserved = BAR_TEXT_LEFT_PX + glyphRects(percent).width * PIXEL_ICON_SCALE + 2;
+  const layout = weekPaceLayout(pace, width, reserved);
+  const labelTop = Math.floor((height - GLYPH_HEIGHT) / 2);
+  const dashes = Array.from({ length: Math.ceil(height / 2) }, (_, i) => i * 2);
+  return (
+    <>
+      <svg
+        className="absolute left-0 top-0 pointer-events-none"
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        shapeRendering="crispEdges"
+        aria-hidden="true"
+        data-testid="usage-pace-days"
+      >
+        {layout.gap && (
+          <rect
+            x={layout.gap.from}
+            y={0}
+            width={layout.gap.to - layout.gap.from}
+            height={height}
+            fill={PACE_COLORS.ahead}
+            opacity={PACE_GAP_OPACITY}
+          />
+        )}
+        {layout.separators.map(({ x, onFill }) =>
+          dashes.map((y) => (
+            <rect
+              key={`${x}:${y}`}
+              x={x}
+              y={y}
+              width={1}
+              height={1}
+              fill={onFill ? PACE_COLORS.onFill : PACE_COLORS.separatorEmpty}
+            />
+          )),
+        )}
+        {layout.labels.map((label) =>
+          glyphRects(label.text).rects.map(([x, y, w]) => (
+            <rect
+              key={`${label.x}:${x}:${y}`}
+              x={label.x + x}
+              y={labelTop + y}
+              width={w}
+              height={1}
+              fill={label.onFill ? PACE_COLORS.onFill : PACE_COLORS.labelEmpty}
+            />
+          )),
+        )}
+      </svg>
+      <div
+        className="absolute pointer-events-none"
+        data-testid="usage-pace-marker"
+        data-ahead={pace.ahead ? 'true' : 'false'}
+        style={{
+          left: layout.markerPx - 1,
+          top: -2,
+          bottom: -2,
+          width: 3,
+          boxSizing: 'border-box',
+          background: pace.ahead ? PACE_COLORS.ahead : PACE_COLORS.onPace,
+          borderLeft: `1px solid ${PACE_COLORS.markerEdge}`,
+          borderRight: `1px solid ${PACE_COLORS.markerEdge}`,
+        }}
+      />
+    </>
+  );
 }
 
 function ResetLabel({ bar }: { bar: Bar }) {
@@ -77,7 +180,7 @@ function ResetLabel({ bar }: { bar: Bar }) {
  *  hovered, when there is room) its reset time just right of it. */
 function BarRow({ bar, showReset, style }: { bar: Bar; showReset: boolean; style: CSSProperties }) {
   return (
-    <div className="flex items-center gap-4" style={style} title={bar.view.detail}>
+    <div className="flex items-center gap-4" style={style} title={barTitle(bar)}>
       <div
         className="relative bg-bg-dark border-2 border-border box-content flex items-center pl-4"
         style={{ width: USAGE_BAR_WIDTH_PX, height: USAGE_BAR_HEIGHT_PX }}
@@ -85,10 +188,12 @@ function BarRow({ bar, showReset, style }: { bar: Bar; showReset: boolean; style
         <div
           className="absolute left-0 top-0 bottom-0"
           style={{
-            width: `${(bar.view.remaining ?? 0) * 100}%`,
+            // Whole pixels, so the day separators line up with its edge.
+            width: Math.round((bar.view.remaining ?? 0) * USAGE_BAR_WIDTH_PX),
             background: bar.fill[bar.view.level],
           }}
         />
+        {bar.pace && <PaceOverlay pace={bar.pace} percent={bar.view.percent} />}
         <PixelText text={bar.view.percent} shadow className="relative text-2xs text-text" />
       </div>
       {showReset && <ResetLabel bar={bar} />}

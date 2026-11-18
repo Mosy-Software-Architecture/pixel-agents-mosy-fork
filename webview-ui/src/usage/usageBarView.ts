@@ -13,6 +13,7 @@ import {
   USAGE_BAR_WARN_FRACTION,
   USAGE_HEART_MAX_BPM,
 } from '../constants.js';
+import { type WeekPace, weekPace } from './weekPace.js';
 
 /** How full a bar reads, which colour band it is in, and what it says. */
 export interface UsageBarView {
@@ -80,6 +81,30 @@ export interface UsageBarSpec {
   name: string;
   kind: 'weekly' | 'fiveHour' | 'extra';
   view: UsageBarView;
+  /** The weekly bar and a model's share of it: the days and the pace marker
+   *  (weekPace.ts). Absent for the 5-hour and extra-usage bars, and once the
+   *  window has reset. */
+  pace?: WeekPace;
+}
+
+/** The pace of a weekly or scoped window, with its recorded days. */
+function paceOf(
+  window: { usedPercentage: number; resetsAt?: number } | undefined,
+  daily: UsagePlanWindow | undefined,
+  nowMs: number,
+): WeekPace | undefined {
+  if (window?.resetsAt === undefined) return undefined;
+  const history =
+    daily?.daily && daily.resetsAt !== undefined
+      ? { history: daily.daily, resetsAt: daily.resetsAt }
+      : undefined;
+  return (
+    weekPace(
+      { usedPercentage: window.usedPercentage, resetsAt: window.resetsAt },
+      nowMs,
+      history,
+    ) ?? undefined
+  );
 }
 
 /**
@@ -87,6 +112,7 @@ export interface UsageBarSpec {
  * the 5-hour bar (none on a plan without that window), then one per scoped or
  * extra-usage window the usage endpoint listed, in its order. The weekly and
  * 5-hour numbers are the freshest of both sources (`sevenDay`/`fiveHour`).
+ * The weekly bar and each model's share carry their pace (days and marker).
  * With nothing known yet at all, an empty weekly bar ("--") stands in.
  */
 export function usageBarSpecs(limits: UsageLimits | undefined, nowMs: number): UsageBarSpec[] {
@@ -100,11 +126,13 @@ export function usageBarSpecs(limits: UsageLimits | undefined, nowMs: number): U
   const session = listed('session');
   const nothingKnown = !limits?.sevenDay && !limits?.fiveHour && !windows;
   if (limits?.sevenDay || weekly || nothingKnown) {
+    const pace = paceOf(limits?.sevenDay ?? weekly, weekly, nowMs);
     bars.push({
       key: 'weekly',
       name: 'Weekly',
       kind: 'weekly',
       view: main(limits?.sevenDay, weekly),
+      ...(pace ? { pace } : {}),
     });
   }
   if (limits?.fiveHour || session) {
@@ -117,7 +145,14 @@ export function usageBarSpecs(limits: UsageLimits | undefined, nowMs: number): U
   }
   for (const w of windows ?? []) {
     if (w.group !== 'scoped' && w.group !== 'overage') continue;
-    bars.push({ key: w.key, name: w.label, kind: 'extra', view: planWindowView(w, nowMs) });
+    const pace = w.group === 'scoped' ? paceOf(w, w, nowMs) : undefined;
+    bars.push({
+      key: w.key,
+      name: w.label,
+      kind: 'extra',
+      view: planWindowView(w, nowMs),
+      ...(pace ? { pace } : {}),
+    });
   }
   return bars;
 }

@@ -2244,6 +2244,47 @@ components:
         locked:
           type: boolean
           description: The endpoint says the window is blocked.
+        daily:
+          $ref: '#/components/schemas/UsageDailyHistory'
+
+    UsageDailyHistory:
+      description: |
+        How a weekly or scoped window was spent, day by day, as the office
+        recorded it: the endpoint keeps no history, so the server samples each
+        successful read (the window's own samples, inside the current window;
+        a new `resetsAt` starts over). Days are the server's local calendar
+        days. A day's `used` is its last sample minus the last sample before
+        it (the first day starts at `since`); `usedBefore` is what was already
+        used when the office started recording. A day without samples has no
+        entry, and what was spent in it counts on the next day with one.
+      type: object
+      additionalProperties: false
+      required: [since, usedBefore, days]
+      properties:
+        since:
+          type: number
+          description: The first sample of this window (epoch milliseconds).
+        usedBefore:
+          type: number
+          description: Share of the window already used at `since`, 0-100.
+        days:
+          type: array
+          description: One entry per local day with samples, oldest first.
+          items:
+            $ref: '#/components/schemas/UsageDay'
+
+    UsageDay:
+      description: One local day of a window's recorded consumption.
+      type: object
+      additionalProperties: false
+      required: [dayStart, used]
+      properties:
+        dayStart:
+          type: number
+          description: Local midnight that starts the day (epoch milliseconds).
+        used:
+          type: number
+          description: Share of the window used that day, in percentage points.
 
     UsagePlanWindowGroup:
       description: What kind of window a UsagePlanWindow is.

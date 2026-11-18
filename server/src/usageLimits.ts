@@ -15,7 +15,9 @@
  * only records why (`endpointStatus`).
  *
  * Everything is kept in ~/.pixel-agents/usage-limits.json so a restarted
- * server still has it. Shared by both surfaces.
+ * server still has it. Shared by both surfaces. Each successful read also
+ * samples the weekly and scoped windows into their `history` (usageHistory.ts),
+ * which the office gets as each window's consumption per day (`daily`).
  *
  * Usage is the operator's account data, so it goes to privileged clients only:
  * the handshake sends it only to them and httpServer drops these broadcasts on
@@ -45,6 +47,14 @@ import {
 import { writeJsonAtomic } from './jsonFileWatcher.js';
 import { hookProviders } from './providers/index.js';
 import { isRecord } from './serverConfig.js';
+import {
+  appendUsageSample,
+  dailyUsage,
+  isSameUsageWindow,
+  keepsHistory,
+  parseUsageHistory,
+  type UsageWindowHistory,
+} from './usageHistory.js';
 
 /** What is known of a provider's usage: the freshest 5-hour and weekly
  *  windows and when they moved last, plus the endpoint's last answer. */
@@ -53,6 +63,8 @@ interface StoredUsage extends ReportedUsage {
   windows?: UsagePlanWindow[];
   polledAt?: number;
   endpointStatus?: UsageEndpointStatus;
+  /** Per window key: the samples of its current window (never sent as is). */
+  history?: Record<string, UsageWindowHistory>;
 }
 
 /** Wire message types only privileged sockets receive. */
@@ -106,7 +118,7 @@ function parseStored(raw: unknown): Record<string, StoredUsage> {
   if (!isRecord(raw)) return out;
   for (const [id, entry] of Object.entries(raw)) {
     if (!isRecord(entry)) continue;
-    const { fiveHour, sevenDay, updatedAt, windows, polledAt, endpointStatus } = entry;
+    const { fiveHour, sevenDay, updatedAt, windows, polledAt, endpointStatus, history } = entry;
     out[id] = {
       ...(isFiniteNumber(updatedAt) ? { updatedAt } : {}),
       ...(isWindow(fiveHour) ? { fiveHour } : {}),
@@ -116,7 +128,17 @@ function parseStored(raw: unknown): Record<string, StoredUsage> {
       ...(ENDPOINT_STATUSES.has(endpointStatus)
         ? { endpointStatus: endpointStatus as UsageEndpointStatus }
         : {}),
+      ...(isRecord(history) ? { history: parseHistories(history) } : {}),
     };
+  }
+  return out;
+}
+
+function parseHistories(raw: Record<string, unknown>): Record<string, UsageWindowHistory> {
+  const out: Record<string, UsageWindowHistory> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    const parsed = parseUsageHistory(value);
+    if (parsed) out[key] = parsed;
   }
   return out;
 }
@@ -133,25 +155,55 @@ function stored(): Record<string, StoredUsage> {
 
 /** Store `next` for a provider when it says something new: its numbers moved,
  *  or the last word is old enough that "updated N min ago" would mislead.
- *  Returns whether it was stored (and the office should hear about it). */
+ *  Returns whether it was stored (and the office should hear about it). A
+ *  new history sample alone is saved without telling the office: the days it
+ *  is sent only move when the numbers do. */
 function commit(providerId: string, next: StoredUsage, now: number): boolean {
   const all = stored();
   const prev = all[providerId];
-  const { updatedAt: _prevAt, polledAt: _prevPolled, ...prevRest } = prev ?? {};
-  const { updatedAt: _nextAt, polledAt: _nextPolled, ...nextRest } = next;
+  const {
+    updatedAt: _prevAt,
+    polledAt: _prevPolled,
+    history: prevHistory,
+    ...prevRest
+  } = prev ?? {};
+  const { updatedAt: _nextAt, polledAt: _nextPolled, history: nextHistory, ...nextRest } = next;
   const moved = !isDeepStrictEqual(prevRest, nextRest);
   const lastWord = prev?.updatedAt;
-  if (!moved && lastWord !== undefined && now - lastWord < USAGE_UNCHANGED_REFRESH_MS) {
-    return false;
-  }
-  all[providerId] = next;
+  const tell = moved || lastWord === undefined || now - lastWord >= USAGE_UNCHANGED_REFRESH_MS;
+  if (!tell && isDeepStrictEqual(prevHistory, nextHistory)) return false;
+  all[providerId] = tell ? next : { ...prev, history: nextHistory };
   try {
     writeJsonAtomic(usageFilePath(), all);
   } catch (err) {
     // The office still gets the report; only a restart would lose it.
     console.error('[Pixel Agents] Could not save usage limits:', err);
   }
-  return true;
+  return tell;
+}
+
+/** The windows' histories after a successful read at `now`: one sample more
+ *  for each weekly or scoped window (by the rules in usageHistory.ts), and a
+ *  window's history dropped once it is neither listed nor still running. */
+function nextHistories(
+  prev: Record<string, UsageWindowHistory> | undefined,
+  windows: UsagePlanWindow[],
+  now: number,
+): Record<string, UsageWindowHistory> | undefined {
+  const out: Record<string, UsageWindowHistory> = {};
+  for (const [key, history] of Object.entries(prev ?? {})) {
+    if (history.resetsAt * 1000 > now) out[key] = history;
+  }
+  for (const window of windows) {
+    if (!keepsHistory(window) || window.resetsAt === undefined) continue;
+    out[window.key] = appendUsageSample(
+      out[window.key],
+      window.usedPercentage,
+      window.resetsAt,
+      now,
+    );
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -197,12 +249,14 @@ export function recordPolledUsage(
     if (prev.endpointStatus === polled.status) return false;
     return commit(providerId, { ...prev, endpointStatus: polled.status }, now);
   }
-  const { fiveHour: _fiveHour, sevenDay: _sevenDay, ...kept } = prev;
+  const { fiveHour: _fiveHour, sevenDay: _sevenDay, history: _history, ...kept } = prev;
   const sevenDay = polled.usage.sevenDay ?? prev.sevenDay;
+  const history = nextHistories(prev.history, polled.windows, now);
   return commit(
     providerId,
     {
       ...kept,
+      ...(history ? { history } : {}),
       ...(polled.usage.fiveHour ? { fiveHour: polled.usage.fiveHour } : {}),
       ...(sevenDay ? { sevenDay } : {}),
       windows: polled.windows,
@@ -214,10 +268,24 @@ export function recordPolledUsage(
   );
 }
 
-/** The `usageLimits` message for a provider (no windows when none is known). */
+/** The `usageLimits` message for a provider (no windows when none is known):
+ *  the stored usage, each weekly or scoped window carrying its days (`daily`)
+ *  when its history is of the same window, and no raw samples. */
 export function usageLimitsMessage(providerId: string): UsageLimits {
-  const entry = stored()[providerId];
-  return { type: 'usageLimits', providerId, ...(entry ?? {}) };
+  const { history, windows, ...entry } = stored()[providerId] ?? {};
+  const withDays = windows?.map((window) => {
+    const own = history?.[window.key];
+    if (!own || window.resetsAt === undefined || !keepsHistory(window)) return window;
+    if (!isSameUsageWindow(own, window.resetsAt)) return window;
+    const daily = dailyUsage(own);
+    return daily ? { ...window, daily } : window;
+  });
+  return {
+    type: 'usageLimits',
+    providerId,
+    ...entry,
+    ...(withDays ? { windows: withDays } : {}),
+  };
 }
 
 /** The `usageBridgeStatus` message: install state, plus why a change failed. */

@@ -51,7 +51,7 @@ Claude Code is supported today; Codex, Gemini, Cursor, and others are on the roa
 - **Done marks** — a session marked done (from its agent's card, from See all, or by your own tools through `~/.claude/session-marks.json`) leaves the sidebar's lists and waits under See all with a green check, until you send it another prompt
 - **Agents that outlive the office** — the standalone office starts its agents as Claude Code background sessions, so closing a terminal or stopping the server leaves them running; the skull on an agent's card stops one
 - **Remote hosts** — the Claude Code sessions of another machine you reach over ssh, opened in the embedded terminal with a character for them
-- **Usage and context bars** — health bars for your plan limits, and one on every agent for the context it has left
+- **Usage and context bars** — health bars for your plan limits, and one on every agent for the context it has left; the weekly bar is cut into days (the days left until it resets, and the days the office saw you spend it) with a marker where you would be spending evenly, so you see at a glance whether you are ahead of pace
 - **Office radio** — procedural 8-bit background music with moods and shareable song codes
 
 <p align="center">
@@ -199,7 +199,7 @@ Pixel Agents uses two Claude Code detection paths:
 - **Hooks mode** (default) — a hook script receives Claude events such as `SessionStart`, `PreToolUse`, `PermissionRequest`, and `Stop`. It discovers active Pixel Agents servers and sends authenticated events to each one.
 - **Heuristic mode** (fallback) — when hooks are unavailable, the runtime infers agent status by scanning Claude's JSONL session transcripts under `~/.claude/projects/`. Transcripts are also read in hooks mode for details not present in an event.
 
-Pixel Agents does not modify Claude Code. Its hook configuration and persistent data live under `~/.claude/` and `~/.pixel-agents/` respectively. The usage bars are opt-in (**Settings → Usage Bars**): Claude Code reports plan limits only to its status line, so turning them on wraps your `statusLine` command in `~/.claude/settings.json` (yours keeps running unchanged), and turning them off restores it.
+Pixel Agents does not modify Claude Code. Its hook configuration and persistent data live under `~/.claude/` and `~/.pixel-agents/` respectively. The usage bars are opt-in (**Settings → Usage Bars**): Claude Code reports plan limits only to its status line, so turning them on wraps your `statusLine` command in `~/.claude/settings.json` (yours keeps running unchanged), and turning them off restores it. The office keeps a small record of the weekly numbers it reads (one sample every few minutes, only for the current week) in `~/.pixel-agents/usage-limits.json` to draw the days.
 
 ## Development
 

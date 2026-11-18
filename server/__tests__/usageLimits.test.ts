@@ -246,6 +246,87 @@ describe('recordPolledUsage (the merge rule)', () => {
   });
 });
 
+describe("usage history (the bars' days)", () => {
+  // Inside the test windows' week (they reset at 1_900_500_000 s).
+  const T = 1_900_500_000_000 - 3 * 24 * 3_600_000;
+  const at = (weekly: number, fable: number) => ({
+    ...polledNoFiveHour,
+    windows: [
+      { ...polledNoFiveHour.windows[0], usedPercentage: weekly },
+      { ...FABLE, usedPercentage: fable },
+    ],
+  });
+
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-usage-'));
+    resetUsageLimitsCacheForTests();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  it('samples the weekly and scoped windows on each read and survives a restart', () => {
+    recordPolledUsage('claude', at(10, 4), T);
+    recordPolledUsage('claude', at(12, 4), T + 120_000);
+    resetUsageLimitsCacheForTests();
+    const file = JSON.parse(
+      fs.readFileSync(path.join(tmpBase, '.pixel-agents', 'usage-limits.json'), 'utf-8'),
+    );
+    expect(file.claude.history).toEqual({
+      weekly_all: {
+        resetsAt: 1_900_500_000,
+        samples: [
+          { t: T, usedPercentage: 10 },
+          { t: T + 120_000, usedPercentage: 12 },
+        ],
+      },
+      'weekly_scoped:Fable': { resetsAt: 1_900_500_000, samples: [{ t: T, usedPercentage: 4 }] },
+    });
+    const message = usageLimitsMessage('claude');
+    expect(message).not.toHaveProperty('history');
+    expect(message.windows![0].daily).toMatchObject({ since: T, usedBefore: 10 });
+    expect(message.windows![0].daily!.days.reduce((sum, d) => sum + d.used, 0)).toBe(2);
+    expect(message.windows![1].daily).toMatchObject({ since: T, usedBefore: 4 });
+  });
+
+  it('saves a due sample without telling the office when nothing moved', () => {
+    recordPolledUsage('claude', at(10, 4), T);
+    // The status line repeats the same weekly number just before the next sample is due…
+    const due = T + 5 * 60_000;
+    expect(recordUsageReport(claudeProvider, report(undefined, 79), due - 1000)).toBe(true);
+    // …so the read that brings it says nothing new: saved, not broadcast.
+    expect(recordPolledUsage('claude', at(10, 4), due)).toBe(false);
+    resetUsageLimitsCacheForTests();
+    const file = JSON.parse(
+      fs.readFileSync(path.join(tmpBase, '.pixel-agents', 'usage-limits.json'), 'utf-8'),
+    );
+    expect(file.claude.history.weekly_all.samples).toEqual([
+      { t: T, usedPercentage: 10 },
+      { t: due, usedPercentage: 10 },
+    ]);
+    expect(file.claude.updatedAt).toBe(due - 1000);
+  });
+
+  it('drops the history of a window that ended and starts the new one fresh', () => {
+    recordPolledUsage('claude', at(70, 30), T);
+    const nextReset = 1_900_500_000 + 7 * 24 * 3600;
+    const next = {
+      ...polledNoFiveHour,
+      windows: [{ ...polledNoFiveHour.windows[0], usedPercentage: 1, resetsAt: nextReset }],
+    };
+    const afterReset = 1_900_500_000_000 + 60_000;
+    recordPolledUsage('claude', next, afterReset);
+    resetUsageLimitsCacheForTests();
+    const file = JSON.parse(
+      fs.readFileSync(path.join(tmpBase, '.pixel-agents', 'usage-limits.json'), 'utf-8'),
+    );
+    expect(file.claude.history).toEqual({
+      weekly_all: { resetsAt: nextReset, samples: [{ t: afterReset, usedPercentage: 1 }] },
+    });
+  });
+});
+
 describe('usage endpoint polling', () => {
   const bridge = claudeProvider.usageBridge!;
 
