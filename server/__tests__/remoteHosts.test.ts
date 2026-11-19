@@ -10,6 +10,7 @@ import {
   remoteAttachArgs,
   remoteCanOpen,
   remoteHostConversations,
+  remoteResumeCommand,
   remoteSessionOf,
   remoteTailArgs,
   shellQuote,
@@ -64,8 +65,14 @@ describe('the commands run over ssh', () => {
     expect(remoteAttachArgs(casita, session({ tmux: 'mos-884-outreach' }))).toEqual([
       '-t',
       'minipc',
-      `tmux new-session -A -s 'mos-884-outreach' -c '/home/u/dev' 'claude --resume ${ID}'`,
+      `tmux new-session -A -s 'mos-884-outreach' -c '/home/u/dev' 'exec "\${SHELL:-/bin/sh}" -lc "claude --resume ${ID}"'`,
     ]);
+  });
+
+  it('resumes through a login shell, so a CLI under the home directory is found', () => {
+    // tmux hands a new session the creating client's PATH: over a
+    // non-interactive ssh that is the system directories only.
+    expect(remoteResumeCommand(ID)).toBe(`exec "\${SHELL:-/bin/sh}" -lc "claude --resume ${ID}"`);
   });
 
   it('only attaches to a service, exactly by its tmux name, never resuming it', () => {

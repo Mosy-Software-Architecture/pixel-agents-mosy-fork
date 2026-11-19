@@ -116,7 +116,7 @@ describe('launchRemoteAgent', () => {
       args: [
         '-t',
         'minipc',
-        `tmux new-session -A -s 'mos-884-outreach' -c '/home/u/dev' 'claude --resume ${ID}'`,
+        `tmux new-session -A -s 'mos-884-outreach' -c '/home/u/dev' 'exec "\${SHELL:-/bin/sh}" -lc "claude --resume ${ID}"'`,
       ],
     });
     const agent = store.get(id)!;

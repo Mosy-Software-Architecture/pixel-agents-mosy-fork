@@ -234,10 +234,24 @@ export function remoteCanOpen(session: RemoteSession): boolean {
 }
 
 /**
+ * The command a new tmux session runs: `claude --resume <id>` through the
+ * user's login shell. tmux gives a new session's command the PATH of the
+ * client that created it, here a non-interactive ssh, which has only the
+ * system directories: a CLI installed under the home directory
+ * (`~/.local/bin`) is not found, the command fails at once and the session
+ * is gone before anything shows. A login shell reads the profile that puts
+ * it on the PATH.
+ */
+export function remoteResumeCommand(sessionId: string): string {
+  return `exec "\${SHELL:-/bin/sh}" -lc "claude --resume ${sessionId}"`;
+}
+
+/**
  * The agent terminal's ssh arguments: attach to the session's tmux session,
- * creating it when missing with `claude --resume <id>` in the directory the
- * session started in (`-A` attaches when it exists, and then ignores the
- * directory and the command). A service only attaches (`=` matches the name
+ * creating it when missing with `claude --resume <id>` (run through a login
+ * shell, `remoteResumeCommand`) in the directory the session started in
+ * (`-A` attaches when it exists, and then ignores the directory and the
+ * command). A service only attaches (`=` matches the name
  * exactly): it runs under its own supervisor, and the office must never start
  * a second one beside it.
  */
@@ -249,7 +263,7 @@ export function remoteAttachArgs(host: RemoteHost, session: RemoteSession): stri
     'tmux new-session -A',
     `-s ${shellQuote(tmuxSessionName(session))}`,
     `-c ${shellQuote(session.cwd)}`,
-    shellQuote(`claude --resume ${session.sessionId}`),
+    shellQuote(remoteResumeCommand(session.sessionId)),
   ].join(' ');
   return ['-t', host.ssh, tmux];
 }
